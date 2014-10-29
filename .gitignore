@@ -2,3 +2,4 @@
 *.o 
 *.db
 PortfolioCli
+template_Yahoo.hs
