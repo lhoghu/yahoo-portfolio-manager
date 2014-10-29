@@ -78,6 +78,17 @@ update :: IO ()
 update = do
     symbols <- fetchSymbols 
     pop <- populateQuotesTable symbols
+    fxs <- updateFx
     prtf <- fetchPortfolio
     let prettyPrtf = map (prettyPrint . toStrings) prtf
     mapM_ putStrLn prettyPrtf
+
+updateFx :: IO ()
+updateFx = do
+    fxs <- fetchFx
+    insertFx (map setFx fxs)
+
+setFx :: Fx -> Fx
+setFx (Fx "GBP" "GBp" _) = Fx "GBP" "GBp" 0.01
+setFx (Fx "GBp" "GBP" _) = Fx "GBp" "GBP" 100.0
+setFx (Fx to from _) = if to == from then Fx to from 1.0 else Fx to from 1.0
