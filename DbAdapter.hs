@@ -4,6 +4,7 @@ import Control.Monad.Trans (liftIO, MonadIO)
 import Data.Conduit
 import Database.HDBC
 import Database.HDBC.Sqlite3
+import Text.Printf
 import Yahoo
 import qualified Data.Conduit.List as CL
 
@@ -94,6 +95,9 @@ class Converters a where
     fromSqlValues :: [SqlValue] -> a
     toSqlValues :: a -> [SqlValue]
 
+headers :: [String]
+headers = ["Sym", "Ccy", "Pos", "@", "Quote", "Chg", "(%)", "Vol", "FX"]
+
 data Portfolio = Portfolio {
     prtfsymbol      :: String,
     prtfcurrency    :: String,
@@ -101,6 +105,7 @@ data Portfolio = Portfolio {
     prtfstrike      :: Double,
     prtfprice       :: Double,
     prtfchange      :: Double,
+    prtfpctchange   :: Double,
     prtfvolume      :: Double,
     prtffxp         :: Double
 } deriving (Show, Ord, Eq)
@@ -110,19 +115,21 @@ instance Converters Portfolio where
                    , prtfcurrency p 
                    , show $ prtfposition p
                    , show $ prtfstrike p
-                   , show $ prtfprice p
-                   , show $ prtfchange p
-                   , show $ prtfvolume p
+                   , printf "%.2f" (prtfprice p)
+                   , printf "%.2f" (prtfchange p)
+                   , printf "%.2f" (100.0 * prtfpctchange p)
+                   , printf "%.0f" (prtfvolume p)
                    , show $ prtffxp p
                    ]
 
-    fromSqlValues [sym, ccy, pos, str, pri, chg, vol, fxp] =  
+    fromSqlValues [sym, ccy, pos, str, pri, chg, pch, vol, fxp] =  
         Portfolio (fromSql sym) (fromSql ccy) (fromSql pos) (fromSql str)
-                  (fromSql pri) (fromSql chg) (fromSql vol) (fromSql fxp)
+                  (fromSql pri) (fromSql chg) (fromSql pch) (fromSql vol) 
+                  (fromSql fxp)
 
-    toSqlValues (Portfolio sym ccy pos str pri chg vol fxp) =  
-        [toSql sym, toSql ccy, toSql pos, toSql str, 
-         toSql pri, toSql chg, toSql vol, toSql fxp]
+    toSqlValues (Portfolio sym ccy pos str pri chg pch vol fxp) =  
+        [toSql sym, toSql ccy, toSql pos, toSql str, toSql pri, toSql chg, 
+         toSql pch, toSql vol, toSql fxp]
 
 data Position = Position {
     symbol      :: String,
@@ -239,6 +246,6 @@ fetchPositions = do
 fetchPortfolio :: IO [Portfolio]
 fetchPortfolio = do
     conn <- connectSqlite3 dbFile
-    res <- quickQuery' conn "select y.symbol, p.currency, p.position, p.strike, y.price, y.change, y.volume, f.fx from yahooQuotesTable as y, portfolio as p, fx as f where p.symbol = y.symbol and f.toCcy = p.currency and f.fromCcy = y.currency" []
+    res <- quickQuery' conn "select y.symbol, p.currency, p.position, p.strike, y.price, y.change, y.change / y.price, y.volume, f.fx from yahooQuotesTable as y, portfolio as p, fx as f where p.symbol = y.symbol and f.toCcy = p.currency and f.fromCcy = y.currency" []
     disconnect conn
     return $ map fromSqlValues res

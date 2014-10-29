@@ -80,6 +80,7 @@ update = do
     pop <- populateQuotesTable symbols
     fxs <- updateFx
     prtf <- fetchPortfolio
+    putStrLn . prettyPrint $ headers
     let prettyPrtf = map (prettyPrint . toStrings) prtf
     mapM_ putStrLn prettyPrtf
 
