@@ -47,6 +47,7 @@ volumeColumn = "volume"
 sqlCreateYahooQuotesTable :: String
 sqlCreateYahooQuotesTable = "create table if not exists " ++ 
     yahooQuotesTable ++ " (" ++ symbolColumn ++ " text, " ++ 
+                                currencyColumn ++ "text, " ++ 
                                 priceColumn ++ " real, " ++ 
                                 volumeColumn ++ " real, " ++ 
                                 changeColumn ++ " real)"
@@ -97,7 +98,7 @@ data Position = Position {
 
 instance Converters Position where
     toStrings p = [ DbAdapter.symbol p
-                  , currency p 
+                  , DbAdapter.currency p 
                   , show $ position p
                   , show $ strike p
                   ]
@@ -112,7 +113,7 @@ insertPosition p = do
     conn <- connectSqlite3 dbFile
     stmt <- prepare conn ("insert into " ++ portfolioTable ++ " values (?, ?, ?, ?)")
     result <- execute stmt [toSql (DbAdapter.symbol p),
-                            toSql (currency p), 
+                            toSql (DbAdapter.currency p), 
                             toSql (position p),
                             toSql (strike p)]
     commit conn
@@ -134,6 +135,7 @@ yahooQuoteToSqlConduit = do
     case quoteStream of
         Just q -> do
             yield $ [ toSql (Yahoo.symbol q) 
+                    , toSql (Yahoo.currency q)
                     , toSql (quote q)
                     , toSql (volume q)
                     , toSql (change q)
@@ -146,7 +148,7 @@ insertYahooQuotes quotes = do
     conn <- connectSqlite3 dbFile
     clear <- run conn ("drop table if exists " ++ yahooQuotesTable) [] 
     create <- run conn sqlCreateYahooQuotesTable []
-    stmt <- prepare conn ("insert into " ++ yahooQuotesTable ++ " values (?, ?, ?, ?)")
+    stmt <- prepare conn ("insert into " ++ yahooQuotesTable ++ " values (?, ?, ?, ?, ?)")
     res <- executeMany stmt quotes 
     commit conn
     disconnect conn
@@ -159,6 +161,9 @@ fetchSymbols = do
     disconnect conn
     return $ map (\(s:ss) -> fromSql s) res
 
+---- fetchFx :: IO [FX]
+---- fetchFx = do
+    
 fetchPositions :: IO [Position]
 fetchPositions = do
     conn <- connectSqlite3 dbFile

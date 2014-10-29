@@ -39,23 +39,25 @@ type Symbol = String
 data YahooQuote = YahooQuote {
     symbol  :: Symbol,
     name    :: String,
+    currency:: String,
     quote   :: Double,
     change  :: Double,
     volume  :: Int
 } deriving (Show, Eq, Ord)
 
 baseQuoteUri :: String
-baseQuoteUri = "http://download.finance.yahoo.com/d/quotes.csv?f=snl1c6v&s="
+baseQuoteUri = "http://download.finance.yahoo.com/d/quotes.csv?f=snc4l1c6v&s="
 
 -- | provide an instance of FromRecord to decode the csv we get back from yahoo
 instance FromRecord YahooQuote where
     parseRecord v
-        | Data.Vector.length v == 5 = YahooQuote <$>
+        | Data.Vector.length v == 6 = YahooQuote <$>
                             v .! 0 <*>
                             v .! 1 <*>
                             v .! 2 <*>
                             v .! 3 <*>
-                            v .! 4
+                            v .! 4 <*>
+                            v .! 5
         | otherwise     = fail "Unable to parse Yahoo response as YahooQuote"
 
 makeUrl :: [Symbol] -> String
