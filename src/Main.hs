@@ -6,7 +6,9 @@ module Main where
 
 import Data.Conduit
 import Data.List (intercalate)
+import Data.Version
 import DbAdapter
+import Paths_yahoo_portfolio_manager
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
 import Yahoo
@@ -16,7 +18,7 @@ data Flag = Version | ShowPortfolio | Update | AddSymbol
 
 options :: [OptDescr Flag]
 options = 
-    [ Option ['v'] ["version"] (NoArg Version)         "Show version number"
+    [ Option ['v'] ["version"] (NoArg Main.Version)    "Show version number"
     , Option ['s'] ["show"]    (NoArg ShowPortfolio)   "Show current portfolio"
     , Option ['u'] ["update"]  (NoArg Update)          "Show the market position"
     , Option ['a'] ["add"]     (NoArg AddSymbol)       "Add a symbol to the portfolio"
@@ -24,7 +26,7 @@ options =
 
 dispatch :: [(Flag, IO ())]
 dispatch = 
-    [ (Version, version)
+    [ (Main.Version, Main.version)
     , (ShowPortfolio, showPortfolio)
     , (AddSymbol, addSymbol)
     , (Update, update)
@@ -33,6 +35,7 @@ dispatch =
 main = do
     args <- getArgs
     progName <- getProgName
+    initDb <- sqlCreateEntries
     let (flags, nonopts, msgs) = getOpt RequireOrder options args
     case flags of
         [mode]  -> case lookup mode dispatch of
@@ -42,7 +45,7 @@ main = do
             helpMessage = usageInfo ("Usage: " ++ progName ++ " MODE") options
 
 version :: IO ()
-version = putStrLn "0.0.0.1"
+version = putStrLn $ showVersion Paths_yahoo_portfolio_manager.version
 
 prettyPrint :: [String] -> String
 prettyPrint = intercalate "\t" 

@@ -1,5 +1,5 @@
-*.hi 
-*.o 
-*.db
-PortfolioCli
-template_Yahoo.hs
+.cabal-sandbox/
+dist/
+cabal.sandbox.config
+portfolio.db
+todelete/
