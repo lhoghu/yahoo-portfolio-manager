@@ -1,5 +1,6 @@
 module DbAdapter where
 
+import Control.Monad (when)
 import Control.Monad.Trans (liftIO, MonadIO)
 import Data.Conduit
 import Database.HDBC
@@ -80,15 +81,23 @@ sqlCreateFxTable = "create table if not exists " ++
 
 --------------------------------------------------------------------------------
 
+connect :: FilePath -> IO Connection
+connect fp = do
+    conn <- connectSqlite3 fp
+    sqlCreateEntries conn
+    return conn
+
+--------------------------------------------------------------------------------
+
 {- | Define a function that recreates the db from scratch -} 
-sqlCreateEntries :: IO Integer
-sqlCreateEntries = do
-    dbfile <- dbFile
-    conn <- connectSqlite3 dbfile
-    result <- run conn sqlCreatePortfolioTable []
+sqlCreateEntries :: IConnection conn => conn -> IO ()
+sqlCreateEntries conn = do
+    tables <- getTables conn
+    when (not (portfolioTable `elem` tables)) $
+        do 
+            run conn sqlCreatePortfolioTable []
+            return ()
     commit conn
-    disconnect conn
-    return result
 
 --------------------------------------------------------------------------------
 
@@ -168,32 +177,26 @@ instance Converters Fx where
 
 --------------------------------------------------------------------------------
 
-insertPosition :: Position -> IO Integer
-insertPosition p = do
-    dbfile <- dbFile
-    conn <- connectSqlite3 dbfile
+insertPosition :: IConnection conn => conn -> Position -> IO Integer
+insertPosition conn p = do
     stmt <- prepare conn ("insert into " ++ portfolioTable ++ " values (?, ?, ?, ?)")
     result <- execute stmt (toSqlValues p)
     commit conn
-    disconnect conn
     return result
 
-insertFx :: [Fx] -> IO ()
-insertFx fxs = do
-    dbfile <- dbFile
-    conn <- connectSqlite3 dbfile
+insertFx :: IConnection conn => conn -> [Fx] -> IO ()
+insertFx conn fxs = do
     clear <- run conn ("drop table if exists " ++ fxTable) [] 
     create <- run conn sqlCreateFxTable []
     stmt <- prepare conn ("insert into " ++ fxTable ++ " values (?, ?, ?)")
     res <- executeMany stmt (map toSqlValues fxs)
     commit conn
-    disconnect conn
     return ()
 
-populateQuotesTable :: [Symbol] -> IO ()
-populateQuotesTable symbols = do
+populateQuotesTable :: IConnection conn => conn -> [Symbol] -> IO ()
+populateQuotesTable conn symbols = do
     sqlValues <- (getQuote symbols) $$ yahooQuoteToSqlConduit $= CL.consume
-    insertYahooQuotes sqlValues
+    insertYahooQuotes conn sqlValues
 
 {- | Define a conduit to transform the stream of yahoo quotes into
  - a stream of SqlValue lists, which, when consumed by a sink is
@@ -213,48 +216,33 @@ yahooQuoteToSqlConduit = do
             yahooQuoteToSqlConduit
         Nothing -> return ()
                        
-insertYahooQuotes :: [[SqlValue]] -> IO ()
-insertYahooQuotes quotes = do
-    dbfile <- dbFile
-    conn <- connectSqlite3 dbfile
+insertYahooQuotes :: IConnection conn => conn -> [[SqlValue]] -> IO ()
+insertYahooQuotes conn quotes = do
     clear <- run conn ("drop table if exists " ++ yahooQuotesTable) [] 
     create <- run conn sqlCreateYahooQuotesTable []
     stmt <- prepare conn ("insert into " ++ yahooQuotesTable ++ " values (?, ?, ?, ?, ?)")
     res <- executeMany stmt quotes 
     commit conn
-    disconnect conn
     return ()
 
 --------------------------------------------------------------------------------
 
-fetchSymbols :: IO [String]
-fetchSymbols = do
-    dbfile <- dbFile
-    conn <- connectSqlite3 dbfile
+fetchSymbols :: IConnection conn => conn -> IO [String]
+fetchSymbols conn = do
     res <- quickQuery' conn ("select distinct " ++ symbolColumn ++ " from " ++ portfolioTable) []
-    disconnect conn
     return $ map (\(s:ss) -> fromSql s) res
 
-fetchFx :: IO [Fx]
-fetchFx = do
-    dbfile <- dbFile
-    conn <- connectSqlite3 dbfile
+fetchFx :: IConnection conn => conn -> IO [Fx]
+fetchFx conn = do
     res <- quickQuery' conn ("select distinct p.currency, y.currency, 1.0 from yahooQuotesTable as y, portfolio as p where p.symbol = y.symbol") []
-    disconnect conn
     return $ map fromSqlValues res
 
-fetchPositions :: IO [Position]
-fetchPositions = do
-    dbfile <- dbFile
-    conn <- connectSqlite3 dbfile
+fetchPositions :: IConnection conn => conn -> IO [Position]
+fetchPositions conn = do
     res <- quickQuery' conn ("select * from " ++ portfolioTable) []
-    disconnect conn
     return $ map fromSqlValues res
 
-fetchPortfolio :: IO [Portfolio]
-fetchPortfolio = do
-    dbfile <- dbFile
-    conn <- connectSqlite3 dbfile
+fetchPortfolio :: IConnection conn => conn -> IO [Portfolio]
+fetchPortfolio conn = do
     res <- quickQuery' conn "select y.symbol, p.currency, p.position, p.strike, y.price, y.change, y.change / y.price, y.volume, f.fx from yahooQuotesTable as y, portfolio as p, fx as f where p.symbol = y.symbol and f.toCcy = p.currency and f.fromCcy = y.currency" []
-    disconnect conn
     return $ map fromSqlValues res

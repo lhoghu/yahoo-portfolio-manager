@@ -7,6 +7,7 @@ module Main where
 import Data.Conduit
 import Data.List (intercalate)
 import Data.Version
+import Database.HDBC
 import DbAdapter
 import Paths_yahoo_portfolio_manager
 import System.Console.GetOpt
@@ -24,25 +25,21 @@ options =
     , Option ['a'] ["add"]     (NoArg AddSymbol)       "Add a symbol to the portfolio"
     ]
 
-dispatch :: [(Flag, IO ())]
-dispatch = 
-    [ (Main.Version, Main.version)
-    , (ShowPortfolio, showPortfolio)
-    , (AddSymbol, addSymbol)
-    , (Update, update)
-    ]
-
 main = do
     args <- getArgs
+    dbfp <- dbFile
+    conn <- connect dbfp
     progName <- getProgName
-    initDb <- sqlCreateEntries
     let (flags, nonopts, msgs) = getOpt RequireOrder options args
     case flags of
-        [mode]  -> case lookup mode dispatch of
-                    (Just action) -> action
-        _       -> ioError (userError (concat msgs ++ helpMessage))
+        [Main.Version]  -> Main.version
+        [ShowPortfolio] -> showPortfolio conn
+        [AddSymbol]     -> addSymbol conn
+        [Update]        -> update conn
+        _               -> ioError (userError (concat msgs ++ helpMessage))
             where
             helpMessage = usageInfo ("Usage: " ++ progName ++ " MODE") options
+    disconnect conn
 
 version :: IO ()
 version = putStrLn $ showVersion Paths_yahoo_portfolio_manager.version
@@ -50,14 +47,14 @@ version = putStrLn $ showVersion Paths_yahoo_portfolio_manager.version
 prettyPrint :: [String] -> String
 prettyPrint = intercalate "\t" 
 
-showPortfolio :: IO ()
-showPortfolio = do
-    positions <- fetchPositions
+showPortfolio :: IConnection conn => conn -> IO ()
+showPortfolio conn = do
+    positions <- fetchPositions conn
     let prettyPositions = map (prettyPrint . toStrings) positions
     mapM_ putStrLn prettyPositions
 
-addSymbol :: IO ()
-addSymbol = do
+addSymbol :: IConnection conn => conn -> IO ()
+addSymbol conn = do
     putStrLn "Enter Symbol: "
     symbol <- getLine
     putStrLn "Enter Position: "
@@ -67,7 +64,8 @@ addSymbol = do
     putStrLn "Enter Strike: "
     strike <- getLine
 
-    res <- insertPosition (Position symbol 
+    res <- insertPosition conn (Position 
+                                    symbol 
                                     currency 
                                     (read position :: Double) 
                                     (read strike :: Double))
@@ -77,20 +75,20 @@ addSymbol = do
         _ -> putStrLn "Failed to add position to db"
         
 
-update :: IO ()
-update = do
-    symbols <- fetchSymbols 
-    pop <- populateQuotesTable symbols
-    fxs <- updateFx
-    prtf <- fetchPortfolio
+update :: IConnection conn => conn -> IO ()
+update conn = do
+    symbols <- fetchSymbols conn 
+    pop <- populateQuotesTable conn symbols
+    fxs <- updateFx conn
+    prtf <- fetchPortfolio conn
     putStrLn . prettyPrint $ headers
     let prettyPrtf = map (prettyPrint . toStrings) prtf
     mapM_ putStrLn prettyPrtf
 
-updateFx :: IO ()
-updateFx = do
-    fxs <- fetchFx
-    insertFx (map setFx fxs)
+updateFx :: IConnection conn => conn -> IO ()
+updateFx conn = do
+    fxs <- fetchFx conn
+    insertFx conn (map setFx fxs)
 
 setFx :: Fx -> Fx
 setFx (Fx "GBP" "GBp" _) = Fx "GBP" "GBp" 0.01
