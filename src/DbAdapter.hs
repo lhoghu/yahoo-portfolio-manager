@@ -15,6 +15,9 @@ dbFile = getDataFileName "portfolio.db"
 
 --------------------------------------------------------------------------------
 
+-- Strings for the portfolio data. This is populated with the (yahoo) symbols
+-- the user holds a postition in, the number of units they own and the
+-- price they bought them at
 portfolioTable :: String
 portfolioTable = "portfolio"
 
@@ -39,6 +42,7 @@ sqlCreatePortfolioTable = "create table if not exists " ++
 
 --------------------------------------------------------------------------------
 
+-- Strings for the table populated with quotes data pulled from yahoo finance
 yahooQuotesTable :: String
 yahooQuotesTable = "yahooQuotesTable"
 
@@ -61,6 +65,7 @@ sqlCreateYahooQuotesTable = "create table if not exists " ++
 
 --------------------------------------------------------------------------------
 
+-- Strings for the table populated with fx data pulled from yahoo
 fxTable :: String
 fxTable = "fx"
 
@@ -81,6 +86,7 @@ sqlCreateFxTable = "create table if not exists " ++
 
 --------------------------------------------------------------------------------
 
+-- | Initialise the db with a minimal schema and return a db connection
 connect :: FilePath -> IO Connection
 connect fp = 
     handleSql errorHandler $
@@ -94,7 +100,10 @@ connect fp =
 
 --------------------------------------------------------------------------------
 
-{- | Define a function that recreates the db from scratch -} 
+{- | Ensure the db exists with a minimal schema
+
+Also perform any checks on db integrity here
+-} 
 sqlCreateEntries :: IConnection conn => conn -> IO ()
 sqlCreateEntries conn = do
     tables <- getTables conn
@@ -106,6 +115,10 @@ sqlCreateEntries conn = do
 
 --------------------------------------------------------------------------------
 
+{- |
+A class to convert between haskell data types and sql tables for ease of
+db insertion and retrieval
+-}
 class Converters a where
     toStrings :: a -> [String]
     fromSqlValues :: [SqlValue] -> a
@@ -182,6 +195,16 @@ instance Converters Fx where
 
 --------------------------------------------------------------------------------
 
+{- Add a new position to the db
+
+The user specifies all the fields to be inserted in the db.
+We do no further checks on the user input - some useful checks include:
+    the symbol exists in yahoo
+    the currency is a three letter string
+    the position is a number
+    the strike is a number
+These are still to be added
+-}
 insertPosition :: IConnection conn => conn -> Position -> IO Integer
 insertPosition conn p =
     handleSql errorHandler $
@@ -195,6 +218,14 @@ insertPosition conn p =
     errorHandler e = do
         fail $ "Failed to add position " ++ show p ++ " to db: " ++ show e
 
+{- Add the current fx to the db
+
+The required fxs are inferred from the currencies the user has specified
+of the price they entered a position in, and the currency yahoo claims it
+returns quotes in.
+There are known issues with the yahoo currency so the retrieval of the
+appropriate fx values from yahoo is not implemented yet
+-}
 insertFx :: IConnection conn => conn -> [Fx] -> IO ()
 insertFx conn fxs = 
     handleSql errorHandler $
@@ -209,6 +240,11 @@ insertFx conn fxs =
     errorHandler e = do
         fail $ "Failed to add fx to db: " ++ show e
 
+{- Add yahoo quotes to the db
+
+The set of symbols to retrieve is inferred from the symbols the user
+has entered in their portfolio.
+-}
 populateQuotesTable :: IConnection conn => conn -> [Symbol] -> IO ()
 populateQuotesTable conn symbols = do
     sqlValues <- (getQuote symbols) $$ yahooQuoteToSqlConduit $= CL.consume
@@ -248,6 +284,11 @@ insertYahooQuotes conn quotes =
 
 --------------------------------------------------------------------------------
 
+{- Retrieve symbols from the db
+
+This is the set of unique symbols specified by the user as part of their
+portfolio
+-}
 fetchSymbols :: IConnection conn => conn -> IO [String]
 fetchSymbols conn = 
     handleSql errorHandler $
@@ -259,6 +300,11 @@ fetchSymbols conn =
     errorHandler e = do
         fail $ "Failed to fetch symbols from db: " ++ show e
 
+{- Fetch fx from the db
+
+This is the set of fxs we require based on the user defined and yahoo 
+currencies in the portfolio. 
+-}
 fetchFx :: IConnection conn => conn -> IO [Fx]
 fetchFx conn = 
     handleSql errorHandler $
@@ -272,6 +318,7 @@ fetchFx conn =
     errorHandler e = do
         fail $ "Failed to fetch fx from db: " ++ show e
 
+{- Fetch the user defined positions from the db -}
 fetchPositions :: IConnection conn => conn -> IO [Position]
 fetchPositions conn =
     handleSql errorHandler $
@@ -282,6 +329,11 @@ fetchPositions conn =
     errorHandler e = do
         fail $ "Failed to fetch positions from db: " ++ show e
 
+{- Fetch the portfolio from the db
+
+This is the set of positions defined by the user, supplemented with 
+the latest quote data from yahoo
+-}
 fetchPortfolio :: IConnection conn => conn -> IO [Portfolio]
 fetchPortfolio conn =
     handleSql errorHandler $

@@ -1,9 +1,5 @@
 module Main where
 
-{- Compile using 
- - ghc -o PortfolioCli Main.hs 
- -}
-
 import Data.Conduit
 import Data.List (intercalate)
 import Data.Version
@@ -14,6 +10,7 @@ import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
 import Yahoo
 
+-- Set up the flags the user can pass in at the command line
 data Flag = Version | ShowPortfolio | Update | AddSymbol
     deriving (Show, Eq, Ord)
 
@@ -25,6 +22,7 @@ options =
     , Option ['a'] ["add"]     (NoArg AddSymbol)       "Add a symbol to the portfolio"
     ]
 
+-- Main: command line interface
 main = handleSqlError $
     do
         args <- getArgs
@@ -43,9 +41,11 @@ main = handleSqlError $
                                         options
         disconnect conn
 
+-- Version impl
 version :: IO ()
 version = putStrLn $ showVersion Paths_yahoo_portfolio_manager.version
 
+-- ShowPortfolio impl
 prettyPrint :: [String] -> String
 prettyPrint = intercalate "\t" 
 
@@ -55,6 +55,7 @@ showPortfolio conn = do
     let prettyPositions = map (prettyPrint . toStrings) positions
     mapM_ putStrLn prettyPositions
 
+-- AddSymbol impl
 addSymbol :: IConnection conn => conn -> IO ()
 addSymbol conn = do
     putStrLn "Enter Symbol: "
@@ -76,7 +77,7 @@ addSymbol conn = do
         1 -> putStrLn "Added position to db"
         _ -> putStrLn "Failed to add position to db"
         
-
+-- Update impl
 update :: IConnection conn => conn -> IO ()
 update conn = do
     symbols <- fetchSymbols conn 
@@ -92,6 +93,7 @@ updateFx conn = do
     fxs <- fetchFx conn
     insertFx conn (map setFx fxs)
 
+-- Placeholder for fx functionality, pending retrieval from yahoo
 setFx :: Fx -> Fx
 setFx (Fx "GBP" "GBp" _) = Fx "GBP" "GBp" 0.01
 setFx (Fx "GBp" "GBP" _) = Fx "GBp" "GBP" 100.0
