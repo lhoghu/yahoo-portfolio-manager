@@ -82,10 +82,15 @@ sqlCreateFxTable = "create table if not exists " ++
 --------------------------------------------------------------------------------
 
 connect :: FilePath -> IO Connection
-connect fp = do
-    conn <- connectSqlite3 fp
-    sqlCreateEntries conn
-    return conn
+connect fp = 
+    handleSql errorHandler $
+    do
+        conn <- connectSqlite3 fp
+        sqlCreateEntries conn
+        return conn
+    where errorHandler e = 
+            do fail $ "Error connecting to database (" ++ show fp ++ "): " 
+                        ++ show e
 
 --------------------------------------------------------------------------------
 
@@ -178,20 +183,31 @@ instance Converters Fx where
 --------------------------------------------------------------------------------
 
 insertPosition :: IConnection conn => conn -> Position -> IO Integer
-insertPosition conn p = do
-    stmt <- prepare conn ("insert into " ++ portfolioTable ++ " values (?, ?, ?, ?)")
-    result <- execute stmt (toSqlValues p)
-    commit conn
-    return result
+insertPosition conn p =
+    handleSql errorHandler $
+    do
+        stmt <- prepare conn ("insert into " ++ portfolioTable 
+                                ++ " values (?, ?, ?, ?)")
+        result <- execute stmt (toSqlValues p)
+        commit conn
+        return result
+    where 
+    errorHandler e = do
+        fail $ "Failed to add position " ++ show p ++ " to db: " ++ show e
 
 insertFx :: IConnection conn => conn -> [Fx] -> IO ()
-insertFx conn fxs = do
-    clear <- run conn ("drop table if exists " ++ fxTable) [] 
-    create <- run conn sqlCreateFxTable []
-    stmt <- prepare conn ("insert into " ++ fxTable ++ " values (?, ?, ?)")
-    res <- executeMany stmt (map toSqlValues fxs)
-    commit conn
-    return ()
+insertFx conn fxs = 
+    handleSql errorHandler $
+    do
+        clear <- run conn ("drop table if exists " ++ fxTable) [] 
+        create <- run conn sqlCreateFxTable []
+        stmt <- prepare conn ("insert into " ++ fxTable ++ " values (?, ?, ?)")
+        res <- executeMany stmt (map toSqlValues fxs)
+        commit conn
+        return ()
+    where 
+    errorHandler e = do
+        fail $ "Failed to add fx to db: " ++ show e
 
 populateQuotesTable :: IConnection conn => conn -> [Symbol] -> IO ()
 populateQuotesTable conn symbols = do
@@ -217,32 +233,67 @@ yahooQuoteToSqlConduit = do
         Nothing -> return ()
                        
 insertYahooQuotes :: IConnection conn => conn -> [[SqlValue]] -> IO ()
-insertYahooQuotes conn quotes = do
-    clear <- run conn ("drop table if exists " ++ yahooQuotesTable) [] 
-    create <- run conn sqlCreateYahooQuotesTable []
-    stmt <- prepare conn ("insert into " ++ yahooQuotesTable ++ " values (?, ?, ?, ?, ?)")
-    res <- executeMany stmt quotes 
-    commit conn
-    return ()
+insertYahooQuotes conn quotes = 
+    handleSql errorHandler $
+    do
+        clear <- run conn ("drop table if exists " ++ yahooQuotesTable) [] 
+        create <- run conn sqlCreateYahooQuotesTable []
+        stmt <- prepare conn ("insert into " ++ yahooQuotesTable ++ " values (?, ?, ?, ?, ?)")
+        res <- executeMany stmt quotes 
+        commit conn
+        return ()
+    where 
+    errorHandler e = do
+        fail $ "Failed to ad yahoo quotes to db: " ++ show e
 
 --------------------------------------------------------------------------------
 
 fetchSymbols :: IConnection conn => conn -> IO [String]
-fetchSymbols conn = do
-    res <- quickQuery' conn ("select distinct " ++ symbolColumn ++ " from " ++ portfolioTable) []
-    return $ map (\(s:ss) -> fromSql s) res
+fetchSymbols conn = 
+    handleSql errorHandler $
+    do
+        res <- quickQuery' conn ("select distinct " ++ symbolColumn 
+                                    ++ " from " ++ portfolioTable) []
+        return $ map (\(s:ss) -> fromSql s) res
+    where 
+    errorHandler e = do
+        fail $ "Failed to fetch symbols from db: " ++ show e
 
 fetchFx :: IConnection conn => conn -> IO [Fx]
-fetchFx conn = do
-    res <- quickQuery' conn ("select distinct p.currency, y.currency, 1.0 from yahooQuotesTable as y, portfolio as p where p.symbol = y.symbol") []
-    return $ map fromSqlValues res
+fetchFx conn = 
+    handleSql errorHandler $
+    do
+        res <- quickQuery' conn ("select distinct p.currency, y.currency, 1.0 " 
+                                    ++ "from yahooQuotesTable as y, " 
+                                    ++ "portfolio as p "
+                                    ++ "where p.symbol = y.symbol") []
+        return $ map fromSqlValues res
+    where 
+    errorHandler e = do
+        fail $ "Failed to fetch fx from db: " ++ show e
 
 fetchPositions :: IConnection conn => conn -> IO [Position]
-fetchPositions conn = do
-    res <- quickQuery' conn ("select * from " ++ portfolioTable) []
-    return $ map fromSqlValues res
+fetchPositions conn =
+    handleSql errorHandler $
+    do
+        res <- quickQuery' conn ("select * from " ++ portfolioTable) []
+        return $ map fromSqlValues res
+    where
+    errorHandler e = do
+        fail $ "Failed to fetch positions from db: " ++ show e
 
 fetchPortfolio :: IConnection conn => conn -> IO [Portfolio]
-fetchPortfolio conn = do
-    res <- quickQuery' conn "select y.symbol, p.currency, p.position, p.strike, y.price, y.change, y.change / y.price, y.volume, f.fx from yahooQuotesTable as y, portfolio as p, fx as f where p.symbol = y.symbol and f.toCcy = p.currency and f.fromCcy = y.currency" []
-    return $ map fromSqlValues res
+fetchPortfolio conn =
+    handleSql errorHandler $
+    do
+        res <- quickQuery' conn ("select " 
+                ++ "y.symbol, p.currency, p.position, p.strike, y.price, "
+                ++ "y.change, y.change / y.price, y.volume, f.fx "
+                ++ "from yahooQuotesTable as y, portfolio as p, fx as f "
+                ++ "where p.symbol = y.symbol and "
+                ++ "f.toCcy = p.currency and "
+                ++ "f.fromCcy = y.currency") []
+        return $ map fromSqlValues res
+    where 
+    errorHandler e = do
+        fail $ "Failed to fetch portfolio from db: " ++ show e

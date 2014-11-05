@@ -25,21 +25,23 @@ options =
     , Option ['a'] ["add"]     (NoArg AddSymbol)       "Add a symbol to the portfolio"
     ]
 
-main = do
-    args <- getArgs
-    dbfp <- dbFile
-    conn <- connect dbfp
-    progName <- getProgName
-    let (flags, nonopts, msgs) = getOpt RequireOrder options args
-    case flags of
-        [Main.Version]  -> Main.version
-        [ShowPortfolio] -> showPortfolio conn
-        [AddSymbol]     -> addSymbol conn
-        [Update]        -> update conn
-        _               -> ioError (userError (concat msgs ++ helpMessage))
-            where
-            helpMessage = usageInfo ("Usage: " ++ progName ++ " MODE") options
-    disconnect conn
+main = handleSqlError $
+    do
+        args <- getArgs
+        dbfp <- dbFile
+        conn <- connect dbfp
+        progName <- getProgName
+        let (flags, nonopts, msgs) = getOpt RequireOrder options args
+        case flags of
+            [Main.Version]  -> Main.version
+            [ShowPortfolio] -> showPortfolio conn
+            [AddSymbol]     -> addSymbol conn
+            [Update]        -> update conn
+            _               -> ioError (userError (concat msgs ++ helpMessage))
+                where
+                helpMessage = usageInfo ("Usage: " ++ progName ++ " MODE") 
+                                        options
+        disconnect conn
 
 version :: IO ()
 version = putStrLn $ showVersion Paths_yahoo_portfolio_manager.version
