@@ -1,4 +1,22 @@
-module Main where
+{- | 
+Command line interface
+ 
+Can be called with any the following options:
+
+* -v, --version. Display the current version
+
+* -s, --show. Show the portfolio positions. This displays purely the information
+entered by the user
+
+* -u, --update. Update the latest quote data from yahoo and display it along 
+with the associated user defined portfolio position data
+
+* -a, --add. Add a new symbol to the portfolio. The user will be prompted for 
+the symbol, number of units, purchase price and currency
+
+-}
+
+module Main (main) where
 
 import Data.Conduit
 import Data.List (intercalate)
@@ -22,7 +40,6 @@ options =
     , Option ['a'] ["add"]     (NoArg AddSymbol)       "Add a symbol to the portfolio"
     ]
 
--- Main: command line interface
 main = handleSqlError $
     do
         args <- getArgs
@@ -46,16 +63,19 @@ version :: IO ()
 version = putStrLn $ showVersion Paths_yahoo_portfolio_manager.version
 
 -- ShowPortfolio impl
-prettyPrint :: [String] -> String
-prettyPrint = intercalate "\t" 
 
+{- Print the portfolio, as entered by the user, to the terminal window -}
 showPortfolio :: IConnection conn => conn -> IO ()
 showPortfolio conn = do
     positions <- fetchPositions conn
-    let prettyPositions = map (prettyPrint . toStrings) positions
+    let prettyPositions = stringify prettyPrint positions
     mapM_ putStrLn prettyPositions
 
 -- AddSymbol impl
+{-
+Add a symbol to the db. The user is prompted for the yahoo symbol, 
+the postition (number of units), the currency the bought in and the price
+-}
 addSymbol :: IConnection conn => conn -> IO ()
 addSymbol conn = do
     putStrLn "Enter Symbol: "
@@ -78,6 +98,18 @@ addSymbol conn = do
         _ -> putStrLn "Failed to add position to db"
         
 -- Update impl
+{- Human readable table headers to prepend to the portfolio table ready
+  for output at the command line
+ -}
+headers :: [String]
+headers = ["Sym", "Ccy", "Pos", "@", "Quote", "Chg", "(%)", "Vol", "FX"]
+
+prettyPrint :: [String] -> String
+prettyPrint = intercalate "\t" 
+
+{- Print the portfolio, including the latest quotes from yahoo
+to the terminal window
+-}
 update :: IConnection conn => conn -> IO ()
 update conn = do
     symbols <- fetchSymbols conn 
@@ -85,7 +117,7 @@ update conn = do
     fxs <- updateFx conn
     prtf <- fetchPortfolio conn
     putStrLn . prettyPrint $ headers
-    let prettyPrtf = map (prettyPrint . toStrings) prtf
+    let prettyPrtf = stringify prettyPrint prtf
     mapM_ putStrLn prettyPrtf
 
 updateFx :: IConnection conn => conn -> IO ()

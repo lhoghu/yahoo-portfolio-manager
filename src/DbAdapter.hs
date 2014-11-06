@@ -1,4 +1,21 @@
-module DbAdapter where
+{- |
+Implementation of persistent db storage for user defined portfolio information
+and quote information retrieved from yahoo
+-}
+module DbAdapter (
+    dbFile, connect,
+
+    stringify,
+
+    -- ** Types queryable in the db
+    Portfolio(..), Position(..), Fx(..),
+
+    -- ** Db updates
+    insertPosition, insertFx, populateQuotesTable, 
+
+    -- ** Db retrieval
+    fetchSymbols, fetchPositions, fetchFx, fetchPortfolio
+) where
 
 import Control.Monad (when)
 import Data.Conduit
@@ -9,14 +26,16 @@ import Text.Printf
 import Yahoo
 import qualified Data.Conduit.List as CL
 
+-- | The location of the db on disk
 dbFile :: IO FilePath
 dbFile = getDataFileName "portfolio.db"
 
 --------------------------------------------------------------------------------
 
--- Strings for the portfolio data. This is populated with the (yahoo) symbols
--- the user holds a postition in, the number of units they own and the
--- price they bought them at
+{- Strings for the portfolio data. This is populated with the (yahoo) symbols
+ the user holds a postition in, the number of units they own and the
+ price they bought them at
+ -}
 portfolioTable :: String
 portfolioTable = "portfolio"
 
@@ -32,6 +51,7 @@ positionColumn = "position"
 strikeColumn :: String
 strikeColumn = "strike"
 
+-- Sql to create the portfolio table in the db
 sqlCreatePortfolioTable :: String
 sqlCreatePortfolioTable = "create table if not exists " ++ 
     portfolioTable ++ " (" ++ symbolColumn ++ " text, " ++
@@ -41,7 +61,10 @@ sqlCreatePortfolioTable = "create table if not exists " ++
 
 --------------------------------------------------------------------------------
 
--- Strings for the table populated with quotes data pulled from yahoo finance
+{- Strings for the table populated with quotes data pulled from yahoo finance.
+In addition to the portfolio table info, this contains the latest price in 
+yahoo, the price move since open and the volume
+-}
 yahooQuotesTable :: String
 yahooQuotesTable = "yahooQuotesTable"
 
@@ -54,6 +77,7 @@ changeColumn = "change"
 volumeColumn :: String
 volumeColumn = "volume"
 
+-- Sql to create the yahoo quotes table in the db
 sqlCreateYahooQuotesTable :: String
 sqlCreateYahooQuotesTable = "create table if not exists " ++ 
     yahooQuotesTable ++ " (" ++ symbolColumn ++ " text, " ++ 
@@ -77,6 +101,7 @@ toCcyColumn = "toCcy"
 fxColumn :: String
 fxColumn = "fx"
 
+-- Sql to create the fx table in the db
 sqlCreateFxTable :: String
 sqlCreateFxTable = "create table if not exists " ++
     fxTable ++ " (" ++ toCcyColumn ++ " text, " ++
@@ -85,7 +110,8 @@ sqlCreateFxTable = "create table if not exists " ++
 
 --------------------------------------------------------------------------------
 
--- | Initialise the db with a minimal schema and return a db connection
+-- | Initialise the db with a minimal schema and return a db connection.
+-- The db will be created if it doesn't already exist.
 connect :: FilePath -> IO Connection
 connect fp = 
     handleSql errorHandler $
@@ -99,8 +125,7 @@ connect fp =
 
 --------------------------------------------------------------------------------
 
-{- | Ensure the db exists with a minimal schema
-
+{- Ensure the db exists with a minimal schema
 Also perform any checks on db integrity here
 -} 
 sqlCreateEntries :: IConnection conn => conn -> IO ()
@@ -114,8 +139,8 @@ sqlCreateEntries conn = do
 
 --------------------------------------------------------------------------------
 
-{- |
-A class to convert between haskell data types and sql tables for ease of
+{- 
+Convert between haskell data types and sql tables for ease of
 db insertion and retrieval
 -}
 class Converters a where
@@ -123,9 +148,10 @@ class Converters a where
     fromSqlValues :: [SqlValue] -> a
     toSqlValues :: a -> [SqlValue]
 
-headers :: [String]
-headers = ["Sym", "Ccy", "Pos", "@", "Quote", "Chg", "(%)", "Vol", "FX"]
 
+{- | Haskell structure that represents the command line output table
+  including yahoo quotes and portfolio position info
+ -}
 data Portfolio = Portfolio {
     prtfsymbol      :: String,
     prtfcurrency    :: String,
@@ -159,6 +185,9 @@ instance Converters Portfolio where
         [toSql sym, toSql ccy, toSql pos, toSql str, toSql pri, toSql chg, 
          toSql pch, toSql vol, toSql fxp]
 
+{-| Haskell structure that contains the portfolio position information
+  entered by the user
+ -}
 data Position = Position {
     symbol      :: String,
     currency    :: String,
@@ -181,6 +210,9 @@ instance Converters Position where
     toSqlValues (Position sym ccy pos str) =
         [toSql sym, toSql ccy, toSql pos, toSql str]
 
+{-| Haskell structure that contains the fx to convert yahoo quotes into
+ the symbol currency entered by the user
+ -}
 data Fx = Fx {
     fxToCcy :: String,
     fxFromCcy :: String,
@@ -192,16 +224,29 @@ instance Converters Fx where
     fromSqlValues [to, from, f] = Fx (fromSql to) (fromSql from) (fromSql f)
     toSqlValues (Fx to from f) = [toSql to, toSql from, toSql f]
 
+{- |
+Convert a list of Converters instances into a list of strings.
+Each converter object has its fields converted to string representations.
+The list of fields is further converted into a single string using the supplied
+([String] -> String) function
+-}
+stringify :: Converters a => ([String] -> String) -> [a] -> [String]
+stringify f = map (f. toStrings)
+
 --------------------------------------------------------------------------------
 
-{- Add a new position to the db
+{-| Add a new position to the db
 
 The user specifies all the fields to be inserted in the db.
 We do no further checks on the user input - some useful checks include:
-    the symbol exists in yahoo
-    the currency is a three letter string
-    the position is a number
-    the strike is a number
+    
+    * the symbol exists in yahoo
+    
+    * the currency is a three letter string
+
+    * the position is a number
+
+    * the strike is a number
 These are still to be added
 -}
 insertPosition :: IConnection conn => conn -> Position -> IO Integer
@@ -217,7 +262,7 @@ insertPosition conn p =
     errorHandler e = do
         fail $ "Failed to add position " ++ show p ++ " to db: " ++ show e
 
-{- Add the current fx to the db
+{-| Add the current fx to the db
 
 The required fxs are inferred from the currencies the user has specified
 of the price they entered a position in, and the currency yahoo claims it
@@ -239,7 +284,7 @@ insertFx conn fxs =
     errorHandler e = do
         fail $ "Failed to add fx to db: " ++ show e
 
-{- Add yahoo quotes to the db
+{-| Add yahoo quotes to the db
 
 The set of symbols to retrieve is inferred from the symbols the user
 has entered in their portfolio.
@@ -249,9 +294,9 @@ populateQuotesTable conn symbols = do
     sqlValues <- (getQuote symbols) $$ yahooQuoteToSqlConduit $= CL.consume
     insertYahooQuotes conn sqlValues
 
-{- | Define a conduit to transform the stream of yahoo quotes into
- - a stream of SqlValue lists, which, when consumed by a sink is
- - ready for insertion in the db
+{- Define a conduit to transform the stream of yahoo quotes into
+  a stream of SqlValue lists, which, when consumed by a sink is
+  ready for insertion in the db
  -}
 yahooQuoteToSqlConduit :: Conduit YahooQuote IO [SqlValue]
 yahooQuoteToSqlConduit = do
@@ -283,7 +328,7 @@ insertYahooQuotes conn quotes =
 
 --------------------------------------------------------------------------------
 
-{- Retrieve symbols from the db
+{-| Retrieve symbols from the db
 
 This is the set of unique symbols specified by the user as part of their
 portfolio
@@ -299,7 +344,7 @@ fetchSymbols conn =
     errorHandler e = do
         fail $ "Failed to fetch symbols from db: " ++ show e
 
-{- Fetch fx from the db
+{-| Fetch fx from the db
 
 This is the set of fxs we require based on the user defined and yahoo 
 currencies in the portfolio. 
@@ -317,7 +362,7 @@ fetchFx conn =
     errorHandler e = do
         fail $ "Failed to fetch fx from db: " ++ show e
 
-{- Fetch the user defined positions from the db -}
+{-| Fetch the user defined positions from the db -}
 fetchPositions :: IConnection conn => conn -> IO [Position]
 fetchPositions conn =
     handleSql errorHandler $
@@ -328,7 +373,7 @@ fetchPositions conn =
     errorHandler e = do
         fail $ "Failed to fetch positions from db: " ++ show e
 
-{- Fetch the portfolio from the db
+{-| Fetch the portfolio from the db
 
 This is the set of positions defined by the user, supplemented with 
 the latest quote data from yahoo
