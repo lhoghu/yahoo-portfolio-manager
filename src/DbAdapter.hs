@@ -1,7 +1,6 @@
 module DbAdapter where
 
 import Control.Monad (when)
-import Control.Monad.Trans (liftIO, MonadIO)
 import Data.Conduit
 import Database.HDBC
 import Database.HDBC.Sqlite3
@@ -230,10 +229,10 @@ insertFx :: IConnection conn => conn -> [Fx] -> IO ()
 insertFx conn fxs = 
     handleSql errorHandler $
     do
-        clear <- run conn ("drop table if exists " ++ fxTable) [] 
-        create <- run conn sqlCreateFxTable []
+        run conn ("drop table if exists " ++ fxTable) [] 
+        run conn sqlCreateFxTable []
         stmt <- prepare conn ("insert into " ++ fxTable ++ " values (?, ?, ?)")
-        res <- executeMany stmt (map toSqlValues fxs)
+        executeMany stmt (map toSqlValues fxs)
         commit conn
         return ()
     where 
@@ -272,10 +271,10 @@ insertYahooQuotes :: IConnection conn => conn -> [[SqlValue]] -> IO ()
 insertYahooQuotes conn quotes = 
     handleSql errorHandler $
     do
-        clear <- run conn ("drop table if exists " ++ yahooQuotesTable) [] 
-        create <- run conn sqlCreateYahooQuotesTable []
+        run conn ("drop table if exists " ++ yahooQuotesTable) [] 
+        run conn sqlCreateYahooQuotesTable []
         stmt <- prepare conn ("insert into " ++ yahooQuotesTable ++ " values (?, ?, ?, ?, ?)")
-        res <- executeMany stmt quotes 
+        executeMany stmt quotes 
         commit conn
         return ()
     where 
@@ -295,7 +294,7 @@ fetchSymbols conn =
     do
         res <- quickQuery' conn ("select distinct " ++ symbolColumn 
                                     ++ " from " ++ portfolioTable) []
-        return $ map (\(s:ss) -> fromSql s) res
+        return $ map (\(s:_) -> fromSql s) res
     where 
     errorHandler e = do
         fail $ "Failed to fetch symbols from db: " ++ show e
