@@ -18,7 +18,6 @@ the symbol, number of units, purchase price and currency
 
 module Main (main) where
 
-import Data.Conduit
 import Data.List (intercalate)
 import Data.Version
 import Database.HDBC
@@ -26,7 +25,6 @@ import DbAdapter
 import Paths_yahoo_portfolio_manager
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
-import Yahoo
 
 -- Set up the flags the user can pass in at the command line
 data Flag = Version | ShowPortfolio | Update | AddSymbol
@@ -40,13 +38,14 @@ options =
     , Option ['a'] ["add"]     (NoArg AddSymbol)       "Add a symbol to the portfolio"
     ]
 
+main :: IO ()
 main = handleSqlError $
     do
         args <- getArgs
         dbfp <- dbFile
         conn <- connect dbfp
         progName <- getProgName
-        let (flags, nonopts, msgs) = getOpt RequireOrder options args
+        let (flags, _, msgs) = getOpt RequireOrder options args
         case flags of
             [Main.Version]  -> Main.version
             [ShowPortfolio] -> showPortfolio conn
@@ -79,19 +78,19 @@ the postition (number of units), the currency the bought in and the price
 addSymbol :: IConnection conn => conn -> IO ()
 addSymbol conn = do
     putStrLn "Enter Symbol: "
-    symbol <- getLine
+    sym <- getLine
     putStrLn "Enter Position: "
-    position <- getLine
+    pos <- getLine
     putStrLn "Enter Currency: "
-    currency <- getLine
+    cur <- getLine
     putStrLn "Enter Strike: "
-    strike <- getLine
+    str <- getLine
 
     res <- insertPosition conn (Position 
-                                    symbol 
-                                    currency 
-                                    (read position :: Double) 
-                                    (read strike :: Double))
+                                    sym 
+                                    cur 
+                                    (read pos :: Double) 
+                                    (read str :: Double))
 
     case res of
         1 -> putStrLn "Added position to db"
@@ -113,8 +112,8 @@ to the terminal window
 update :: IConnection conn => conn -> IO ()
 update conn = do
     symbols <- fetchSymbols conn 
-    pop <- populateQuotesTable conn symbols
-    fxs <- updateFx conn
+    populateQuotesTable conn symbols
+    updateFx conn
     prtf <- fetchPortfolio conn
     putStrLn . prettyPrint $ headers
     let prettyPrtf = stringify prettyPrint prtf
