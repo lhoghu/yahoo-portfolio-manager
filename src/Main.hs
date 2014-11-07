@@ -25,9 +25,10 @@ import DbAdapter
 import Paths_yahoo_portfolio_manager
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
+import Yahoo (validateSymbol)
 
 -- Set up the flags the user can pass in at the command line
-data Flag = Version | ShowPortfolio | Update | AddSymbol
+data Flag = Version | ShowPortfolio | Update | AddSymbol | Lookup
     deriving (Show, Eq, Ord)
 
 options :: [OptDescr Flag]
@@ -36,6 +37,7 @@ options =
     , Option ['s'] ["show"]    (NoArg ShowPortfolio)   "Show current portfolio"
     , Option ['u'] ["update"]  (NoArg Update)          "Show the market position"
     , Option ['a'] ["add"]     (NoArg AddSymbol)       "Add a symbol to the portfolio"
+    , Option ['l'] ["lookup"]  (NoArg Lookup)    "Lookup possible matches for a symbol in Yahoo"
     ]
 
 main :: IO ()
@@ -51,6 +53,7 @@ main = handleSqlError $
             [ShowPortfolio] -> showPortfolio conn
             [AddSymbol]     -> addSymbol conn
             [Update]        -> update conn
+            [Lookup]        -> fail "Not implemented yet"
             _               -> ioError (userError (concat msgs ++ helpMessage))
                 where
                 helpMessage = usageInfo ("Usage: " ++ progName ++ " MODE") 
@@ -86,15 +89,17 @@ addSymbol conn = do
     putStrLn "Enter Strike: "
     str <- getLine
 
-    res <- insertPosition conn (Position 
-                                    sym 
-                                    cur 
-                                    (read pos :: Double) 
-                                    (read str :: Double))
-
-    case res of
-        1 -> putStrLn "Added position to db"
-        _ -> putStrLn "Failed to add position to db"
+    symbolOk <- validateSymbol sym
+    if symbolOk then do
+        res <- insertPosition conn (Position 
+                                        sym 
+                                        cur 
+                                        (read pos :: Double) 
+                                        (read str :: Double))
+        case res of
+            1 -> putStrLn "Added position to db"
+            _ -> putStrLn "Failed to add position to db"
+     else putStrLn "Symbol not recognised by Yahoo. It has not been added to the db. Try using -l flag to see possible alternatives"
         
 -- Update impl
 {- Human readable table headers to prepend to the portfolio table ready
