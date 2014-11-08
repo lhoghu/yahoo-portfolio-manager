@@ -25,6 +25,7 @@ import DbAdapter
 import Paths_yahoo_portfolio_manager
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
+import Text.Regex
 import Yahoo (validateSymbol)
 
 -- Set up the flags the user can pass in at the command line
@@ -60,11 +61,15 @@ main = handleSqlError $
                                         options
         disconnect conn
 
+--------------------------------------------------------------------------------
 -- Version impl
+--------------------------------------------------------------------------------
 version :: IO ()
 version = putStrLn $ showVersion Paths_yahoo_portfolio_manager.version
 
+--------------------------------------------------------------------------------
 -- ShowPortfolio impl
+--------------------------------------------------------------------------------
 
 {- Print the portfolio, as entered by the user, to the terminal window -}
 showPortfolio :: IConnection conn => conn -> IO ()
@@ -73,7 +78,9 @@ showPortfolio conn = do
     let prettyPositions = stringify prettyPrint positions
     mapM_ putStrLn prettyPositions
 
+--------------------------------------------------------------------------------
 -- AddSymbol impl
+--------------------------------------------------------------------------------
 {-
 Add a symbol to the db. The user is prompted for the yahoo symbol, 
 the postition (number of units), the currency the bought in and the price
@@ -89,19 +96,47 @@ addSymbol conn = do
     putStrLn "Enter Strike: "
     str <- getLine
 
-    symbolOk <- validateSymbol sym
-    if symbolOk then do
-        res <- insertPosition conn (Position 
-                                        sym 
-                                        cur 
-                                        (read pos :: Double) 
-                                        (read str :: Double))
-        case res of
-            1 -> putStrLn "Added position to db"
-            _ -> putStrLn "Failed to add position to db"
-     else putStrLn "Symbol not recognised by Yahoo. It has not been added to the db. Try using -l flag to see possible alternatives"
-        
+    symOk <- validateSymbol sym
+    let curOk = validateCurrency cur
+        posOk = validatePosition pos
+        strOk = validatePrice str in
+        if not symOk then 
+            putStrLn "Symbol not recognised by Yahoo. It has not been added to the db. Try using -l flag to see possible alternatives"
+        else if not curOk then
+            putStrLn "Currency not in recognised format. It should be a three character string. The symbol has not been added to the db"
+        else if not posOk then
+            putStrLn "Position not in recognised format. It should be a number. The symbol has not been added to the db"
+        else if not strOk then
+            putStrLn "Price not in recognised format. It should be a number. The symbol has not been added to the db"
+        else do
+            res <- insertPosition conn (Position 
+                                            sym 
+                                            cur 
+                                            (read pos :: Double) 
+                                            (read str :: Double))
+            case res of
+                1 -> putStrLn "Added position to db"
+                _ -> putStrLn "Failed to add position to db"
+
+validateCurrency :: String -> Bool 
+validateCurrency ccy = case matchRegex (mkRegex "^[A-Za-z]{3}$") ccy of 
+                        Just _ -> True
+                        Nothing -> False
+    
+
+validatePosition :: String -> Bool
+validatePosition pos = case matchRegex (mkRegex "^[0-9]*\\.?[0-9]*$") pos of 
+                        Just _ -> True
+                        Nothing -> False
+
+validatePrice :: String -> Bool
+validatePrice price = case matchRegex (mkRegex "^[0-9]*\\.?[0-9]*$") price of 
+                        Just _ -> True
+                        Nothing -> False
+
+--------------------------------------------------------------------------------
 -- Update impl
+--------------------------------------------------------------------------------
 {- Human readable table headers to prepend to the portfolio table ready
   for output at the command line
  -}

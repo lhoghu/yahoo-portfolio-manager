@@ -38,7 +38,7 @@ module Yahoo (
 import Data.Aeson
 import Data.Conduit 
 import Data.Csv hiding ((.:))
-import Data.List (intercalate)
+import Data.List (any, intercalate)
 import Data.Vector hiding ((++), mapM_)
 import Control.Applicative
 import Control.Lens
@@ -167,9 +167,10 @@ lookupSymbol sym = do
 validateSymbol :: MonadIO m => Symbol -> m Bool
 validateSymbol s = do
     r <- lookupSymbol s $$ CL.consume
-    case r of
-        res:[] -> liftIO $ return ((resSymbol res) == s)
-        _ -> liftIO $ return (False)
+    liftIO $ return (matchSymbol s r)
+
+matchSymbol :: String -> [LookupSymbol] -> Bool
+matchSymbol x = Data.List.any (\s -> ((resSymbol s) == x))
 
 -- Test code to see yahoo quote stream in ghci
 --
