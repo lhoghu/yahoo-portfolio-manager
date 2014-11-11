@@ -29,6 +29,8 @@ import Paths_yahoo_portfolio_manager
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
 import Text.Regex
+import Text.Tabular
+import Text.Tabular.AsciiArt
 import Yahoo (validateSymbol, lookupSymbol, LookupSymbol (..))
 
 -- Set up the flags the user can pass in at the command line
@@ -144,10 +146,17 @@ validatePrice price = case matchRegex (mkRegex "^[0-9]*\\.?[0-9]*$") price of
   for output at the command line
  -}
 headers :: [String]
-headers = ["Sym", "Ccy", "Pos", "@", "Quote", "Chg", "(%)", "Vol", "FX"]
+headers = ["Ccy", "Pos", "@", "Quote", "Chg", "(%)", "Vol", "FX", "PrtfFX", "PnL", "(%)"]
 
 prettyPrint :: [String] -> String
 prettyPrint = intercalate "\t" 
+
+tabulate :: [Portfolio] -> String
+tabulate ps = render id id id table
+    where
+        table = Table (Group NoLine (map (Header . prtfsymbol) ps)) 
+                      (Group NoLine (map Header headers)) 
+                      (map (drop 1 . toStrings) ps)
 
 {- Print the portfolio, including the latest quotes from yahoo
 to the terminal window
@@ -158,10 +167,12 @@ update conn = do
     populateQuotesTable conn symbols
     updateFx conn
     prtf <- fetchPortfolio conn
-    putStrLn . prettyPrint $ headers
-    let prettyPrtf = stringify prettyPrint prtf
-    mapM_ putStrLn prettyPrtf
+    putStrLn $ tabulate prtf
+    -- putStrLn . prettyPrint $ headers
+    -- let prettyPrtf = stringify prettyPrint prtf
+    -- mapM_ putStrLn prettyPrtf
 
+-- TODO implement portfolio fx
 updateFx :: IConnection conn => conn -> IO ()
 updateFx conn = do
     fxs <- fetchFx conn
@@ -169,9 +180,10 @@ updateFx conn = do
 
 -- Placeholder for fx functionality, pending retrieval from yahoo
 setFx :: Fx -> Fx
-setFx (Fx "GBP" "GBp" _) = Fx "GBP" "GBp" 0.01
-setFx (Fx "GBp" "GBP" _) = Fx "GBp" "GBP" 100.0
-setFx (Fx to from _) = if to == from then Fx to from 1.0 else Fx to from 1.0
+setFx (Fx "GBp" "GBp" _ _) = Fx "GBp" "GBp" 1.0 0.01 
+setFx (Fx "GBP" "GBp" _ _) = Fx "GBP" "GBp" 0.01 1.0 
+setFx (Fx "GBp" "GBP" _ _) = Fx "GBp" "GBP" 100.0 0.01 
+setFx (Fx to from _ _) = if to == from then Fx to from 1.0 1.0 else Fx to from 1.0 1.0
 
 --------------------------------------------------------------------------------
 -- Lookup impl

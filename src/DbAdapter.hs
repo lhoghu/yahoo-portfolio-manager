@@ -5,7 +5,7 @@ and quote information retrieved from yahoo
 module DbAdapter (
     dbFile, connect,
 
-    stringify,
+    stringify, toStrings,
 
     -- ** Types queryable in the db
     Portfolio(..), Position(..), Fx(..),
@@ -29,6 +29,10 @@ import qualified Data.Conduit.List as CL
 -- | The location of the db on disk
 dbFile :: IO FilePath
 dbFile = getDataFileName "portfolio.db"
+
+-- The location of sql queries on disk
+portfolioSqlFile :: IO FilePath
+portfolioSqlFile = getDataFileName "src/sql/portfolio.sql"
 
 --------------------------------------------------------------------------------
 
@@ -101,12 +105,16 @@ toCcyColumn = "toCcy"
 fxColumn :: String
 fxColumn = "fx"
 
+prtfFxColumn :: String
+prtfFxColumn = "prtfFx"
+
 -- Sql to create the fx table in the db
 sqlCreateFxTable :: String
 sqlCreateFxTable = "create table if not exists " ++
     fxTable ++ " (" ++ toCcyColumn ++ " text, " ++
                        fromCcyColumn ++ " text, " ++
-                       fxColumn ++ " real)"
+                       fxColumn ++ " real, " ++
+                       prtfFxColumn ++ ")"
 
 --------------------------------------------------------------------------------
 
@@ -161,29 +169,35 @@ data Portfolio = Portfolio {
     prtfchange      :: Double,
     prtfpctchange   :: Double,
     prtfvolume      :: Double,
-    prtffxp         :: Double
+    prtffxp         :: Double,
+    prtfpfx         :: Double,
+    prtfpnl         :: Double,
+    prtfpctpnl      :: Double
 } deriving (Show, Ord, Eq)
 
 instance Converters Portfolio where
     toStrings p =  [ prtfsymbol p
                    , prtfcurrency p 
-                   , show $ prtfposition p
-                   , show $ prtfstrike p
+                   , printf "%.0f" (prtfposition p)
+                   , printf "%.2f" (prtfstrike p)
                    , printf "%.2f" (prtfprice p)
                    , printf "%.2f" (prtfchange p)
                    , printf "%.2f" (100.0 * prtfpctchange p)
                    , printf "%.0f" (prtfvolume p)
                    , show $ prtffxp p
+                   , show $ prtfpfx p
+                   , printf "%.2f" (prtfpnl p)
+                   , printf "%.2f" (100.0 * prtfpctpnl p)
                    ]
 
-    fromSqlValues [sym, ccy, pos, str, pri, chg, pch, vol, fxp] =  
+    fromSqlValues [sym, ccy, pos, str, pri, chg, pch, vol, fxp, pfx, pnl, plc] =  
         Portfolio (fromSql sym) (fromSql ccy) (fromSql pos) (fromSql str)
                   (fromSql pri) (fromSql chg) (fromSql pch) (fromSql vol) 
-                  (fromSql fxp)
+                  (fromSql fxp) (fromSql pfx) (fromSql pnl) (fromSql plc)
 
-    toSqlValues (Portfolio sym ccy pos str pri chg pch vol fxp) =  
+    toSqlValues (Portfolio sym ccy pos str pri chg pch vol fxp pfx pnl plc) =  
         [toSql sym, toSql ccy, toSql pos, toSql str, toSql pri, toSql chg, 
-         toSql pch, toSql vol, toSql fxp]
+         toSql pch, toSql vol, toSql fxp, toSql pfx, toSql pnl, toSql plc]
 
 {-| Haskell structure that contains the portfolio position information
   entered by the user
@@ -216,13 +230,17 @@ instance Converters Position where
 data Fx = Fx {
     fxToCcy :: String,
     fxFromCcy :: String,
-    fx :: Double
+    fx :: Double,
+    prtfFx :: Double
 } deriving (Show, Ord, Eq)
 
 instance Converters Fx where
-    toStrings f = [fxToCcy f, fxFromCcy f, show $ fx f]
-    fromSqlValues [to, from, f] = Fx (fromSql to) (fromSql from) (fromSql f)
-    toSqlValues (Fx to from f) = [toSql to, toSql from, toSql f]
+    toStrings f = [fxToCcy f, fxFromCcy f, show $ fx f, show $ prtfFx f]
+    fromSqlValues [to, from, f, pf] = Fx (fromSql to) 
+                                         (fromSql from) 
+                                         (fromSql f) 
+                                         (fromSql pf)
+    toSqlValues (Fx to from f pf) = [toSql to, toSql from, toSql f, toSql pf]
 
 {- |
 Convert a list of Converters instances into a list of strings.
@@ -266,7 +284,7 @@ insertFx conn fxs =
     do
         run conn ("drop table if exists " ++ fxTable) [] 
         run conn sqlCreateFxTable []
-        stmt <- prepare conn ("insert into " ++ fxTable ++ " values (?, ?, ?)")
+        stmt <- prepare conn ("insert into " ++ fxTable ++ " values (?, ?, ?, ?)")
         executeMany stmt (map toSqlValues fxs)
         commit conn
         return ()
@@ -343,7 +361,7 @@ fetchFx :: IConnection conn => conn -> IO [Fx]
 fetchFx conn = 
     handleSql errorHandler $
     do
-        res <- quickQuery' conn ("select distinct p.currency, y.currency, 1.0 " 
+        res <- quickQuery' conn ("select distinct p.currency, y.currency, 1.0, 1.0 " 
                                     ++ "from yahooQuotesTable as y, " 
                                     ++ "portfolio as p "
                                     ++ "where p.symbol = y.symbol") []
@@ -372,13 +390,9 @@ fetchPortfolio :: IConnection conn => conn -> IO [Portfolio]
 fetchPortfolio conn =
     handleSql errorHandler $
     do
-        res <- quickQuery' conn ("select " 
-                ++ "y.symbol, p.currency, p.position, p.strike, y.price, "
-                ++ "y.change, y.change / y.price, y.volume, f.fx "
-                ++ "from yahooQuotesTable as y, portfolio as p, fx as f "
-                ++ "where p.symbol = y.symbol and "
-                ++ "f.toCcy = p.currency and "
-                ++ "f.fromCcy = y.currency") []
+        fn <- portfolioSqlFile
+        sqlQuery <- readFile fn
+        res <- quickQuery' conn sqlQuery []
         return $ map fromSqlValues res
     where 
     errorHandler e = do
