@@ -14,6 +14,7 @@ with the associated user defined portfolio position data
 * -a, --add. Add a new symbol to the portfolio. The user will be prompted for 
 the symbol, number of units, purchase price and currency
 
+* -l, --lookup. Look for matches in Yahoo of a symbol string or substring. Yahoo returns up to 10 possible matches
 -}
 
 module Main (main) where

@@ -238,16 +238,6 @@ stringify f = map (f. toStrings)
 {-| Add a new position to the db
 
 The user specifies all the fields to be inserted in the db.
-We do no further checks on the user input - some useful checks include:
-    
-    * the symbol exists in yahoo
-    
-    * the currency is a three letter string
-
-    * the position is a number
-
-    * the strike is a number
-These are still to be added
 -}
 insertPosition :: IConnection conn => conn -> Position -> IO Integer
 insertPosition conn p =

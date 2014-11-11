@@ -23,13 +23,7 @@ The list of fields is further converted into a single string using the supplied
 </p></div><div class="subs constructors"><p class="caption">Constructors</p><table><tr><td class="src"><a name="v:Fx" class="def">Fx</a></td><td class="doc empty">&nbsp;</td></tr><tr><td colspan="2"><div class="subs fields"><p class="caption">Fields</p><dl><dt class="src"><a name="v:fxToCcy" class="def">fxToCcy</a> :: String</dt><dd class="doc empty">&nbsp;</dd><dt class="src"><a name="v:fxFromCcy" class="def">fxFromCcy</a> :: String</dt><dd class="doc empty">&nbsp;</dd><dt class="src"><a name="v:fx" class="def">fx</a> :: Double</dt><dd class="doc empty">&nbsp;</dd></dl><div class="clear"></div></div></td></tr></table></div><div class="subs instances"><p id="control.i:Fx" class="caption collapser" onclick="toggleSection('i:Fx')">Instances</p><div id="section.i:Fx" class="show"><table><tr><td class="src">Eq <a href="DbAdapter.html#t:Fx">Fx</a></td><td class="doc empty">&nbsp;</td></tr><tr><td class="src">Ord <a href="DbAdapter.html#t:Fx">Fx</a></td><td class="doc empty">&nbsp;</td></tr><tr><td class="src">Show <a href="DbAdapter.html#t:Fx">Fx</a></td><td class="doc empty">&nbsp;</td></tr></table></div></div></div><h2 id="g:2">Db updates
 </h2><div class="top"><p class="src"><a name="v:insertPosition" class="def">insertPosition</a> :: IConnection conn =&gt; conn -&gt; <a href="DbAdapter.html#t:Position">Position</a> -&gt; IO Integer</p><div class="doc"><p>Add a new position to the db
 </p><p>The user specifies all the fields to be inserted in the db.
-We do no further checks on the user input - some useful checks include:
-</p><ul><li> the symbol exists in yahoo
-</li><li> the currency is a three letter string
-</li><li> the position is a number
-</li><li> the strike is a number
-These are still to be added
-</li></ul></div></div><div class="top"><p class="src"><a name="v:insertFx" class="def">insertFx</a> :: IConnection conn =&gt; conn -&gt; [<a href="DbAdapter.html#t:Fx">Fx</a>] -&gt; IO ()</p><div class="doc"><p>Add the current fx to the db
+</p></div></div><div class="top"><p class="src"><a name="v:insertFx" class="def">insertFx</a> :: IConnection conn =&gt; conn -&gt; [<a href="DbAdapter.html#t:Fx">Fx</a>] -&gt; IO ()</p><div class="doc"><p>Add the current fx to the db
 </p><p>The required fxs are inferred from the currencies the user has specified
 of the price they entered a position in, and the currency yahoo claims it
 returns quotes in.
