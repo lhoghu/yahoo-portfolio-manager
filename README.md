@@ -8,7 +8,9 @@ Persists position information in local sqlite db and pulls latest quotes from ya
 Installation
 ============
 
+```sh
 $ sudo apt-get install zlib1g-dev libsqlite3-dev
 $ cabal sandbox init
 $ cabal install --only-dependencies
 $ cabal build
+```
