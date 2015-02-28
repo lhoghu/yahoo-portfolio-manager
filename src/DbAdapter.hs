@@ -18,17 +18,21 @@ module DbAdapter (
 ) where
 
 import Control.Monad (when)
-import Data.Conduit
+import Data.Conduit (($=), ($$), await, yield, Conduit (..))
 import Database.HDBC
 import Database.HDBC.Sqlite3
 import Paths_yahoo_portfolio_manager
+import System.Directory (createDirectoryIfMissing)
 import Text.Printf
 import Yahoo
 import qualified Data.Conduit.List as CL
 
 -- | The location of the db on disk
 dbFile :: IO FilePath
-dbFile = getDataFileName "portfolio.db"
+dbFile = do
+    dataDir <- getDataDir
+    _ <- createDirectoryIfMissing True dataDir
+    getDataFileName "portfolio.db"
 
 -- The location of sql queries on disk
 portfolioSqlFile :: IO FilePath
@@ -119,7 +123,8 @@ sqlCreateFxTable = "create table if not exists " ++
 --------------------------------------------------------------------------------
 
 -- | Initialise the db with a minimal schema and return a db connection.
--- The db will be created if it doesn't already exist.
+-- The db will be created if it doesn't already exist, provided the 
+-- parent folder exists
 connect :: FilePath -> IO Connection
 connect fp = 
     handleSql errorHandler $

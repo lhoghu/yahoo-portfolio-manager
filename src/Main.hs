@@ -19,7 +19,7 @@ the symbol, number of units, purchase price and currency
 
 module Main (main) where
 
-import Data.Conduit
+import Data.Conduit (($$))
 import qualified Data.Conduit.List as CL
 import Data.List (intercalate)
 import Data.Version
