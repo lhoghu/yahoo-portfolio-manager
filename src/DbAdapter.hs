@@ -8,13 +8,13 @@ module DbAdapter (
     stringify, toStrings,
 
     -- ** Types queryable in the db
-    Portfolio(..), Position(..), Fx(..),
+    Portfolio(..), Position(..), Dividend(..), Fx(..),
 
     -- ** Db updates
-    insertPosition, insertFx, populateQuotesTable, 
+    insertPosition, insertDividend, insertFx, populateQuotesTable, 
 
     -- ** Db retrieval
-    fetchSymbols, fetchPositions, fetchFx, fetchPortfolio
+    fetchSymbols, fetchPositions, fetchFx, fetchPortfolio, fetchDividends
 ) where
 
 import Control.Monad (when)
@@ -122,6 +122,29 @@ sqlCreateFxTable = "create table if not exists " ++
 
 --------------------------------------------------------------------------------
 
+{- Strings for the table populated with dividend information provided by the user.
+-}
+dividendsTable :: String
+dividendsTable = "dividendsTable"
+
+divSymbolColumn :: String
+divSymbolColumn = "symbol"
+
+dividendColumn :: String
+dividendColumn = "dividend"
+
+divDateColumn :: String
+divDateColumn = "date"
+
+-- Sql to create the dividends table in the db
+sqlCreateDividendsTable :: String
+sqlCreateDividendsTable = "create table if not exists " ++ 
+    dividendsTable ++ " (" ++ divSymbolColumn ++ " text, " ++ 
+                                dividendColumn ++ "real, " ++ 
+                                divDateColumn ++ "text)"
+
+--------------------------------------------------------------------------------
+
 -- | Initialise the db with a minimal schema and return a db connection.
 -- The db will be created if it doesn't already exist, provided the 
 -- parent folder exists
@@ -144,9 +167,11 @@ Also perform any checks on db integrity here
 sqlCreateEntries :: IConnection conn => conn -> IO ()
 sqlCreateEntries conn = do
     tables <- getTables conn
-    when (not (portfolioTable `elem` tables)) $
+    when (or [not (portfolioTable `elem` tables),
+          not (dividendsTable `elem` tables)]) $
         do 
             run conn sqlCreatePortfolioTable []
+            run conn sqlCreateDividendsTable []
             return ()
     commit conn
 
@@ -247,6 +272,28 @@ instance Converters Fx where
                                          (fromSql pf)
     toSqlValues (Fx to from f pf) = [toSql to, toSql from, toSql f, toSql pf]
 
+{-| Haskell structure that contains the portfolio position information
+  entered by the user
+ -}
+data Dividend = Dividend {
+    divsymbol   :: String,
+    dividend    :: Double,
+    divdate     :: String
+} deriving (Show, Ord, Eq)
+
+instance Converters Dividend where
+    toStrings d = [ divsymbol d
+                  , show $ dividend d 
+                  , divdate d
+                  ]
+
+    fromSqlValues [sym, div, dte] = Dividend (fromSql sym)
+                                             (fromSql div)
+                                             (fromSql dte)
+
+    toSqlValues (Dividend sym div dte) =
+        [toSql sym, toSql div, toSql dte]
+
 {- |
 Convert a list of Converters instances into a list of strings.
 Each converter object has its fields converted to string representations.
@@ -274,6 +321,23 @@ insertPosition conn p =
     where 
     errorHandler e = do
         fail $ "Failed to add position " ++ show p ++ " to db: " ++ show e
+
+{-| Add a new dividend payment to the db
+
+The user specifies all the fields to be inserted in the db.
+-}
+insertDividend :: IConnection conn => conn -> Dividend -> IO Integer
+insertDividend conn div =
+    handleSql errorHandler $
+    do
+        stmt <- prepare conn ("insert into " ++ dividendsTable 
+                                ++ " values (?, ?, ?)")
+        result <- execute stmt (toSqlValues div)
+        commit conn
+        return result
+    where 
+    errorHandler e = do
+        fail $ "Failed to add dividend " ++ show div ++ " to db: " ++ show e
 
 {-| Add the current fx to the db
 
@@ -385,6 +449,17 @@ fetchPositions conn =
     where
     errorHandler e = do
         fail $ "Failed to fetch positions from db: " ++ show e
+
+{-| Fetch the user defined dividends from the db -}
+fetchDividends :: IConnection conn => conn -> IO [Dividend]
+fetchDividends conn =
+    handleSql errorHandler $
+    do
+        res <- quickQuery' conn ("select * from " ++ dividendsTable) []
+        return $ map fromSqlValues res
+    where
+    errorHandler e = do
+        fail $ "Failed to fetch dividends from db: " ++ show e
 
 {-| Fetch the portfolio from the db
 

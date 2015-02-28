@@ -14,6 +14,9 @@ with the associated user defined portfolio position data
 * -a, --add. Add a new symbol to the portfolio. The user will be prompted for 
 the symbol, number of units, purchase price and currency
 
+* -d, --div. Add a new dividend payment. The user will be prompted for 
+the symbol, dividend per unit and divident payment date
+
 * -l, --lookup. Look for matches in Yahoo of a symbol string or substring. Yahoo returns up to 10 possible matches
 -}
 
@@ -34,7 +37,8 @@ import Text.Tabular.AsciiArt
 import Yahoo (validateSymbol, lookupSymbol, LookupSymbol (..))
 
 -- Set up the flags the user can pass in at the command line
-data Flag = Version | ShowPortfolio | Update | AddSymbol | Lookup
+data Flag = Version | ShowPortfolio | Update | AddSymbol | 
+            AddDividend | ShowDividends | Lookup
     deriving (Show, Eq, Ord)
 
 options :: [OptDescr Flag]
@@ -43,6 +47,8 @@ options =
     , Option ['s'] ["show"]    (NoArg ShowPortfolio)   "Show current portfolio"
     , Option ['u'] ["update"]  (NoArg Update)          "Show the market position"
     , Option ['a'] ["add"]     (NoArg AddSymbol)       "Add a symbol to the portfolio"
+    , Option ['d'] ["div"]     (NoArg AddDividend)     "Add a dividend payment"
+    , Option ['p'] ["pay"]     (NoArg ShowDividends)   "Show all dividend payments"
     , Option ['l'] ["lookup"]  (NoArg Lookup)          "Lookup possible matches for a symbol in Yahoo"
     ]
 
@@ -58,6 +64,8 @@ main = handleSqlError $
             [Main.Version]  -> Main.version
             [ShowPortfolio] -> showPortfolio conn
             [AddSymbol]     -> addSymbol conn
+            [AddDividend]   -> addDividend conn
+            [ShowDividends] -> showDividends conn
             [Update]        -> update conn
             [Lookup]        -> Main.lookup
             _               -> ioError (userError (concat msgs ++ helpMessage))
@@ -82,6 +90,17 @@ showPortfolio conn = do
     positions <- fetchPositions conn
     let prettyPositions = stringify prettyPrint positions
     mapM_ putStrLn prettyPositions
+
+--------------------------------------------------------------------------------
+-- ShowDividends impl
+--------------------------------------------------------------------------------
+
+{- Print the dividends, as entered by the user, to the terminal window -}
+showDividends :: IConnection conn => conn -> IO ()
+showDividends conn = do
+    dividends <- fetchDividends conn
+    let prettyDividends = stringify prettyPrint dividends
+    mapM_ putStrLn prettyDividends
 
 --------------------------------------------------------------------------------
 -- AddSymbol impl
@@ -136,6 +155,42 @@ validatePosition pos = case matchRegex (mkRegex "^[0-9]*\\.?[0-9]*$") pos of
 
 validatePrice :: String -> Bool
 validatePrice price = case matchRegex (mkRegex "^[0-9]*\\.?[0-9]*$") price of 
+                        Just _ -> True
+                        Nothing -> False
+
+--------------------------------------------------------------------------------
+-- AddDividend impl
+--------------------------------------------------------------------------------
+{-
+Add a dividend to the db. The user is prompted for the yahoo symbol, 
+the dividend (per unit) and the dividend date.
+-}
+addDividend :: IConnection conn => conn -> IO ()
+addDividend conn = do
+    putStrLn "Enter Symbol: "
+    sym <- getLine
+    putStrLn "Enter Dividend: "
+    div <- getLine
+    putStrLn "Enter Dividend date (yyyy-mm-dd): "
+    dte <- getLine
+
+    symOk <- validateSymbol sym
+    let dteOk = validateDate dte in
+        if not symOk then 
+            putStrLn "Symbol not recognised by Yahoo. The dividend has not been added to the db. Try using -l flag to see possible alternatives"
+        else if not dteOk then
+            putStrLn "Date not in recognised format (yyyy-mm-dd). The dividend has not been added to the db"
+        else do
+            res <- insertDividend conn (Dividend
+                                            sym 
+                                            (read div:: Double) 
+                                            dte)
+            case res of
+                1 -> putStrLn "Added dividend to db"
+                _ -> putStrLn "Failed to add dividend to db"
+
+validateDate :: String -> Bool 
+validateDate dte = case matchRegex (mkRegex "^[0-9]{4}-[0-9]{2}-[0-9]{2}$") dte of 
                         Just _ -> True
                         Nothing -> False
 
