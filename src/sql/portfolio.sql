@@ -1,4 +1,6 @@
 create view daily_pnl as select
+        sum(t.units) as units,
+        t.price * t.rescale as price,
         t.payments as dividends,
         t.symbol as symbol,
         sum(t.cost) as cost,
@@ -10,6 +12,7 @@ create view daily_pnl as select
 from 
 (
     select
+        p.position as units,
         y.symbol as symbol, 
         y.price * f.fx as price,
         p.strike * p.position * f.prtfFx as cost, 

@@ -195,10 +195,12 @@ class Converters a where
   including yahoo quotes and portfolio position info
  -}
 data Portfolio = Portfolio {
-    prtffrac        :: Maybe Double,
+    prtfunits       :: Double,
+    prtfprice       :: Double,
+    prtfdiv         :: Maybe Double,
     prtfsymbol      :: String,
     prtfcost        :: Double,
-    prtfprice       :: Double,
+    prtfcurrent     :: Double,
     prtfchange      :: Double,
     prtfpctchange   :: Double,
     prtfpnl         :: Double,
@@ -207,11 +209,13 @@ data Portfolio = Portfolio {
 
 instance Converters Portfolio where
     toStrings p =  [ prtfsymbol p
-                   , printf "%.2f" (prtfcost p)
+                   , printf "%.0f" (prtfunits p)
                    , printf "%.2f" (prtfprice p)
+                   , printf "%.2f" (prtfcost p)
+                   , printf "%.2f" (prtfcurrent p)
                    , printf "%.2f" (prtfchange p)
                    , printf "%.2f" (100.0 * prtfpctchange p)
-                   , printf "%.2f" (handleNull (prtffrac p))
+                   , printf "%.2f" (handleNull (prtfdiv p))
                    , printf "%.2f" (prtfpnl p)
                    , printf "%.2f" (100.0 * prtfpctpnl p)
                    ]
@@ -219,14 +223,15 @@ instance Converters Portfolio where
                    handleNull (Just d) = d
                    handleNull Nothing = 0.0
 
-    fromSqlValues [fra, sym, str, pri, chg, pch, pnl, plc] =  
-        Portfolio (fromSql fra) (fromSql sym) (fromSql str) 
-                  (fromSql pri) (fromSql chg) (fromSql pch) 
+    fromSqlValues [pos, pri, div, sym, str, cur, chg, pch, pnl, plc] =  
+        Portfolio (fromSql pos) (fromSql pri) (fromSql div) 
+                  (fromSql sym) (fromSql str) 
+                  (fromSql cur) (fromSql chg) (fromSql pch) 
                   (fromSql pnl) (fromSql plc)
 
-    toSqlValues (Portfolio fra sym str pri chg pch pnl plc) =  
-        [toSql sym, toSql fra, toSql str, toSql pri, toSql chg, 
-         toSql pch, toSql pnl, toSql plc]
+    toSqlValues (Portfolio pos pri div sym str cos chg pch pnl plc) =  
+        [toSql pos, toSql pri, toSql sym, toSql div, toSql str, toSql cos, 
+         toSql chg, toSql pch, toSql pnl, toSql plc]
 
 {-| Haskell structure that contains the portfolio position information
   entered by the user
@@ -480,6 +485,8 @@ fetchPortfolio conn =
                 \(\
                 \        select * from daily_pnl\
                 \        union select\
+                \                0.0,\
+                \                0.0,\
                 \                sum(dividends),\
                 \                'TOTAL',\
                 \                sum(cost),\
