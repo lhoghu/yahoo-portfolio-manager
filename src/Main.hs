@@ -119,10 +119,13 @@ addSymbol conn = do
     cur <- getLine
     putStrLn "Enter Strike: "
     str <- getLine
+    putStrLn "Enter Trade date (yyyy-mm-dd): "
+    dte <- getLine
 
     symOk <- validateSymbol sym
     let curOk = validateCurrency cur
         posOk = validatePosition pos
+        dteOk = validateDate dte
         strOk = validatePrice str in
         if not symOk then 
             putStrLn "Symbol not recognised by Yahoo. It has not been added to the db. Try using -l flag to see possible alternatives"
@@ -132,10 +135,13 @@ addSymbol conn = do
             putStrLn "Position not in recognised format. It should be a number. The symbol has not been added to the db"
         else if not strOk then
             putStrLn "Price not in recognised format. It should be a number. The symbol has not been added to the db"
+        else if not dteOk then
+            putStrLn "Trade date not in recognised format. It should be of form yyyy-mm-dd. The symbol has not been added to the db"
         else do
             res <- insertPosition conn (Position 
                                             sym 
                                             cur 
+                                            dte
                                             (read pos :: Double) 
                                             (read str :: Double))
             case res of
@@ -155,6 +161,11 @@ validatePosition pos = case matchRegex (mkRegex "^[0-9]*\\.?[0-9]*$") pos of
 
 validatePrice :: String -> Bool
 validatePrice price = case matchRegex (mkRegex "^[0-9]*\\.?[0-9]*$") price of 
+                        Just _ -> True
+                        Nothing -> False
+
+validateDate :: String -> Bool 
+validateDate dte = case matchRegex (mkRegex "^[0-9]{4}-[0-9]{2}-[0-9]{2}$") dte of 
                         Just _ -> True
                         Nothing -> False
 
@@ -189,11 +200,6 @@ addDividend conn = do
                 1 -> putStrLn "Added dividend to db"
                 _ -> putStrLn "Failed to add dividend to db"
 
-validateDate :: String -> Bool 
-validateDate dte = case matchRegex (mkRegex "^[0-9]{4}-[0-9]{2}-[0-9]{2}$") dte of 
-                        Just _ -> True
-                        Nothing -> False
-
 --------------------------------------------------------------------------------
 -- Update impl
 --------------------------------------------------------------------------------
@@ -201,7 +207,7 @@ validateDate dte = case matchRegex (mkRegex "^[0-9]{4}-[0-9]{2}-[0-9]{2}$") dte 
   for output at the command line
  -}
 headers :: [String]
-headers = ["Ccy", "Pos", "@", "Quote", "Chg", "(%)", "Vol", "FX", "PrtfFX", "PnL", "(%)"]
+headers = ["Cost", "Current", "Chg", "(%)", "Divs", "PnL", "(%)"]
 
 prettyPrint :: [String] -> String
 prettyPrint = intercalate "\t" 

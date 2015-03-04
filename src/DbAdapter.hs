@@ -53,6 +53,9 @@ symbolColumn = "symbol"
 currencyColumn :: String
 currencyColumn = "currency"
 
+dateColumn :: String
+dateColumn = "date"
+
 positionColumn :: String
 positionColumn = "position"
 
@@ -64,6 +67,7 @@ sqlCreatePortfolioTable :: String
 sqlCreatePortfolioTable = "create table if not exists " ++ 
     portfolioTable ++ " (" ++ symbolColumn ++ " text, " ++
                               currencyColumn ++ " text, " ++
+                              dateColumn ++ " text, " ++ 
                               positionColumn ++ " real, " ++ 
                               strikeColumn ++ " real)"
 
@@ -140,8 +144,8 @@ divDateColumn = "date"
 sqlCreateDividendsTable :: String
 sqlCreateDividendsTable = "create table if not exists " ++ 
     dividendsTable ++ " (" ++ divSymbolColumn ++ " text, " ++ 
-                                dividendColumn ++ "real, " ++ 
-                                divDateColumn ++ "text)"
+                                dividendColumn ++ " real, " ++ 
+                                divDateColumn ++ " text)"
 
 --------------------------------------------------------------------------------
 
@@ -191,43 +195,38 @@ class Converters a where
   including yahoo quotes and portfolio position info
  -}
 data Portfolio = Portfolio {
+    prtffrac        :: Maybe Double,
     prtfsymbol      :: String,
-    prtfcurrency    :: String,
-    prtfposition    :: Double,
-    prtfstrike      :: Double,
+    prtfcost        :: Double,
     prtfprice       :: Double,
     prtfchange      :: Double,
     prtfpctchange   :: Double,
-    prtfvolume      :: Double,
-    prtffxp         :: Double,
-    prtfpfx         :: Double,
     prtfpnl         :: Double,
     prtfpctpnl      :: Double
 } deriving (Show, Ord, Eq)
 
 instance Converters Portfolio where
     toStrings p =  [ prtfsymbol p
-                   , prtfcurrency p 
-                   , printf "%.0f" (prtfposition p)
-                   , printf "%.2f" (prtfstrike p)
+                   , printf "%.2f" (prtfcost p)
                    , printf "%.2f" (prtfprice p)
                    , printf "%.2f" (prtfchange p)
                    , printf "%.2f" (100.0 * prtfpctchange p)
-                   , printf "%.0f" (prtfvolume p)
-                   , show $ prtffxp p
-                   , show $ prtfpfx p
+                   , printf "%.2f" (handleNull (prtffrac p))
                    , printf "%.2f" (prtfpnl p)
                    , printf "%.2f" (100.0 * prtfpctpnl p)
                    ]
+                   where
+                   handleNull (Just d) = d
+                   handleNull Nothing = 0.0
 
-    fromSqlValues [sym, ccy, pos, str, pri, chg, pch, vol, fxp, pfx, pnl, plc] =  
-        Portfolio (fromSql sym) (fromSql ccy) (fromSql pos) (fromSql str)
-                  (fromSql pri) (fromSql chg) (fromSql pch) (fromSql vol) 
-                  (fromSql fxp) (fromSql pfx) (fromSql pnl) (fromSql plc)
+    fromSqlValues [fra, sym, str, pri, chg, pch, pnl, plc] =  
+        Portfolio (fromSql fra) (fromSql sym) (fromSql str) 
+                  (fromSql pri) (fromSql chg) (fromSql pch) 
+                  (fromSql pnl) (fromSql plc)
 
-    toSqlValues (Portfolio sym ccy pos str pri chg pch vol fxp pfx pnl plc) =  
-        [toSql sym, toSql ccy, toSql pos, toSql str, toSql pri, toSql chg, 
-         toSql pch, toSql vol, toSql fxp, toSql pfx, toSql pnl, toSql plc]
+    toSqlValues (Portfolio fra sym str pri chg pch pnl plc) =  
+        [toSql sym, toSql fra, toSql str, toSql pri, toSql chg, 
+         toSql pch, toSql pnl, toSql plc]
 
 {-| Haskell structure that contains the portfolio position information
   entered by the user
@@ -235,6 +234,7 @@ instance Converters Portfolio where
 data Position = Position {
     symbol      :: String,
     currency    :: String,
+    date        :: String,
     position    :: Double,
     strike      :: Double
 } deriving (Show, Ord, Eq)
@@ -242,17 +242,19 @@ data Position = Position {
 instance Converters Position where
     toStrings p = [ DbAdapter.symbol p
                   , DbAdapter.currency p 
+                  , DbAdapter.date p 
                   , show $ position p
                   , show $ strike p
                   ]
 
-    fromSqlValues [sym, ccy, pos, str] = Position (fromSql sym)
-                                                  (fromSql ccy)
-                                                  (fromSql pos)
-                                                  (fromSql str)
+    fromSqlValues [sym, ccy, dte, pos, str] = Position (fromSql sym)
+                                                          (fromSql ccy)
+                                                          (fromSql dte)
+                                                          (fromSql pos)
+                                                          (fromSql str)
 
-    toSqlValues (Position sym ccy pos str) =
-        [toSql sym, toSql ccy, toSql pos, toSql str]
+    toSqlValues (Position sym ccy dte pos str) =
+        [toSql sym, toSql ccy, toSql dte, toSql pos, toSql str]
 
 {-| Haskell structure that contains the fx to convert yahoo quotes into
  the symbol currency entered by the user
@@ -314,7 +316,7 @@ insertPosition conn p =
     handleSql errorHandler $
     do
         stmt <- prepare conn ("insert into " ++ portfolioTable 
-                                ++ " values (?, ?, ?, ?)")
+                                ++ " values (?, ?, ?, ?, ?)")
         result <- execute stmt (toSqlValues p)
         commit conn
         return result
@@ -472,7 +474,23 @@ fetchPortfolio conn =
     do
         fn <- portfolioSqlFile
         sqlQuery <- readFile fn
-        res <- quickQuery' conn sqlQuery []
+        _ <- run conn sqlQuery []
+        res <- quickQuery' conn 
+                "select * from \
+                \(\
+                \        select * from daily_pnl\
+                \        union select\
+                \                sum(dividends),\
+                \                'TOTAL',\
+                \                sum(cost),\
+                \                sum(current_value),\
+                \                sum(change),\
+                \                sum(change) / sum(current_value),\
+                \                sum(total_change),\
+                \                sum(current_value - cost +dividends)/sum(cost)\
+                \        from daily_pnl\
+                \) as t\
+                \ order by case t.symbol when 'TOTAL' then 100 else 1 end" []
         return $ map fromSqlValues res
     where 
     errorHandler e = do
