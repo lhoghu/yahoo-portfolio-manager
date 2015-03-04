@@ -17,6 +17,7 @@ cabal-version:       >=1.10
 extra-source-files:  README.md
 data-files:          
     src/sql/portfolio.sql
+    src/sql/dividendPayments.sql
 
 executable yahoo-portfolio-manager
   main-is:             Main.hs
