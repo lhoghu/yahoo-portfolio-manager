@@ -12,6 +12,7 @@ module DbAdapter (
 
     -- ** Db updates
     insertPosition, insertDividend, insertFx, populateQuotesTable, 
+    populateHistoQuotes,
 
     -- ** Db retrieval
     fetchSymbols, fetchPositions, fetchFx, fetchPortfolio, fetchDividends
@@ -21,6 +22,7 @@ import Control.Monad (when)
 import Data.Conduit (($=), ($$), await, yield, Conduit (..))
 import Database.HDBC
 import Database.HDBC.Sqlite3
+import Data.Time (Day (..))
 import Paths_yahoo_portfolio_manager
 import System.Directory (createDirectoryIfMissing)
 import Text.Printf
@@ -97,6 +99,47 @@ sqlCreateYahooQuotesTable = "create table if not exists " ++
                                 priceColumn ++ " real, " ++ 
                                 volumeColumn ++ " real, " ++ 
                                 changeColumn ++ " real)"
+
+--------------------------------------------------------------------------------
+
+{- Strings for the table of historical quote data pulled from Yahoo finance.
+ -}
+yahooHistoQuotes :: String
+yahooHistoQuotes = "yahooHistoQuotes"
+
+histoSymbolCol :: String
+histoSymbolCol = "symbol"
+
+histoDateCol :: String
+histoDateCol = "date"
+
+histoOpenCol :: String
+histoOpenCol = "open"
+
+histoHighCol :: String
+histoHighCol = "high"
+
+histoLowCol :: String
+histoLowCol = "low"
+
+histoCloseCol :: String
+histoCloseCol = "close"
+
+histoVolumeCol :: String
+histoVolumeCol = "volume"
+
+histoAdjCloseCol :: String
+histoAdjCloseCol = "adjClose"
+
+sqlCreateYahooHistoTable = "create table if not exists " ++ 
+    yahooHistoQuotes ++ " (" ++ histoSymbolCol ++ " text, " ++
+                                histoDateCol ++ " text, " ++
+                                histoOpenCol ++ " real, " ++ 
+                                histoHighCol ++ " real, " ++
+                                histoLowCol ++ " real, " ++ 
+                                histoCloseCol ++ " real, " ++
+                                histoVolumeCol ++ " real, " ++
+                                histoAdjCloseCol ++ " real)"
 
 --------------------------------------------------------------------------------
 
@@ -409,6 +452,46 @@ insertYahooQuotes conn quotes =
     where 
     errorHandler e = do
         fail $ "Failed to ad yahoo quotes to db: " ++ show e
+
+{- Add historical yahoo quotes to the db
+ -}
+populateHistoQuotes :: IConnection conn => conn -> Symbol -> Day -> Day -> IO ()
+populateHistoQuotes conn symbol from to = do
+    sqlValues <- (getHisto symbol from to) 
+                    $$ yahooHistoToSqlConduit symbol
+                    $= CL.consume
+    insertYahooHistoQuotes conn sqlValues
+
+yahooHistoToSqlConduit :: Symbol -> Conduit TimePoint IO [SqlValue]
+yahooHistoToSqlConduit symbol = do
+    quoteStream <- await
+    case quoteStream of
+        Just q -> do
+            yield $ [ toSql symbol
+                    , toSql (histoDte q)
+                    , toSql (histoOpen q)
+                    , toSql (histoHigh q)
+                    , toSql (histoLow q)
+                    , toSql (histoClose q)
+                    , toSql (histoVolume q)
+                    , toSql (histoAdjClose q)
+                    ]
+            yahooHistoToSqlConduit symbol
+        Nothing -> return ()
+
+insertYahooHistoQuotes :: IConnection conn => conn -> [[SqlValue]] -> IO ()
+insertYahooHistoQuotes conn quotes = 
+    handleSql errorHandler $
+    do
+        run conn sqlCreateYahooHistoTable []
+        stmt <- prepare conn ("insert into " ++ yahooHistoQuotes ++ 
+                                " values (?, ?, ?, ?, ?, ?, ?, ?)")
+        executeMany stmt quotes
+        commit conn
+        return ()
+    where
+    errorHandler e = do
+        fail $ "Failed to insert historical Yahoo quotes in the db: " ++ show e
 
 --------------------------------------------------------------------------------
 

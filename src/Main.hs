@@ -27,6 +27,7 @@ import qualified Data.Conduit.List as CL
 import Data.List (intercalate)
 import Data.Version
 import Database.HDBC
+import DateUtils (toDate)
 import DbAdapter
 import Paths_yahoo_portfolio_manager
 import System.Console.GetOpt
@@ -38,7 +39,7 @@ import Yahoo (validateSymbol, lookupSymbol, LookupSymbol (..))
 
 -- Set up the flags the user can pass in at the command line
 data Flag = Version | ShowPortfolio | Update | AddSymbol | 
-            AddDividend | ShowDividends | Lookup
+            AddDividend | ShowDividends | Lookup | LoadHisto
     deriving (Show, Eq, Ord)
 
 options :: [OptDescr Flag]
@@ -49,6 +50,7 @@ options =
     , Option ['a'] ["add"]     (NoArg AddSymbol)       "Add a symbol to the portfolio"
     , Option ['d'] ["div"]     (NoArg AddDividend)     "Add a dividend payment"
     , Option ['p'] ["pay"]     (NoArg ShowDividends)   "Show all dividend payments"
+    , Option ['h'] ["histo"]   (NoArg LoadHisto)       "Load historical quotes from yahoo"
     , Option ['l'] ["lookup"]  (NoArg Lookup)          "Lookup possible matches for a symbol in Yahoo"
     ]
 
@@ -67,6 +69,7 @@ main = handleSqlError $
             [AddDividend]   -> addDividend conn
             [ShowDividends] -> showDividends conn
             [Update]        -> update conn
+            [LoadHisto]     -> loadHistoQuotes conn
             [Lookup]        -> Main.lookup
             _               -> ioError (userError (concat msgs ++ helpMessage))
                 where
@@ -264,3 +267,29 @@ lookup = do
                                                resTypeDisp m, 
                                                resExchDisp m, 
                                                resName m])
+
+--------------------------------------------------------------------------------
+-- Histo quote retrieval
+--------------------------------------------------------------------------------
+{- Load historical quotes from Yahoo into the db
+ -}
+loadHistoQuotes :: IConnection conn => conn -> IO ()
+loadHistoQuotes conn = do
+    putStrLn "Enter symbol: "
+    symbol <- getLine
+    putStrLn "Enter start date: "
+    startDate <- getLine
+    putStrLn "Enter end date: "
+    endDate <- getLine
+
+    symbolOk <- validateSymbol symbol
+    let fromOk = validateDate startDate
+        toOk = validateDate endDate in
+        if not symbolOk then 
+            putStrLn "Symbol not recognised by Yahoo. No history has been added to the db. Try using -l flag to see possible alternatives"
+        else if not fromOk then
+            putStrLn "Start date not in recognised format (yyyy-mm-dd). No history has been added to the db"
+        else if not toOk then
+            putStrLn "End date not in recognised format (yyyy-mm-dd). No history has been added to the db"
+        else do
+            populateHistoQuotes conn symbol (toDate startDate) (toDate endDate)

@@ -20,13 +20,13 @@ module Yahoo (
     Symbol,
 
     -- * Types retrievable from Yahoo
-    YahooQuote, LookupSymbol,
+    YahooQuote, LookupSymbol, TimePoint (..),
 
     -- ** @YahooQuote@ fields
     symbol, name, currency, quote, change, volume, 
 
     -- * Populating @YahooQuote@s
-    getQuote,
+    getQuote, getHisto,
 
     -- ** @LookupSymbol@ fields
     resSymbol, resName, resExch, resType, resExchDisp, resTypeDisp,
@@ -40,11 +40,13 @@ import Data.Conduit
 import Data.Csv hiding ((.:))
 import Data.List (any, intercalate)
 import Data.Vector hiding ((++), mapM_)
+import Data.Time (toGregorian, Day (..))
 import Control.Applicative
 import Control.Lens
 import Control.Monad (mzero)
 import Control.Monad.Trans (liftIO, MonadIO)
 import Network.Wreq (get, responseBody)
+import Text.Printf
 import Text.Regex
 import qualified Data.Conduit.List as CL
 import qualified Data.ByteString.Lazy.Char8 as BS
@@ -77,10 +79,38 @@ data LookupSymbol = LookupSymbol {
     resTypeDisp :: String
 } deriving (Show, Eq, Ord)
 
+{-|
+Type used to store time point for historical data
+-}
+data TimePoint = TimePoint {
+    histoDte            :: String,
+    histoOpen           :: Double,
+    histoHigh           :: Double,
+    histoLow            :: Double,
+    histoClose          :: Double,
+    histoVolume         :: Double,
+    histoAdjClose       :: Double
+} deriving (Show, Eq, Ord)
+
 -- The yahoo finance url template which we append with the symbols we'd like
 -- quotes for
 baseQuoteUri :: String
 baseQuoteUri = "http://download.finance.yahoo.com/d/quotes.csv?f=snc4l1c6v&s="
+
+-- The url template for histo data in csv format:
+--      s = symbol
+--      a = from month -1
+--      b = from day
+--      c = from year
+--      d = to month -1
+--      e = to day
+--      f = to year
+--      g = trading freq (d, w, m, or v for dividends only)
+-- Returns columns:
+-- Date, Open, High, Low, Close, Volume, Adj Close
+-- Adj Close is a close adjusted for dividends and splits
+baseHistoUri :: String
+baseHistoUri = "http://ichart.yahoo.com/table.csv?s=%s&a=%d&b=%d&c=%d&d=%d&e=%d&f=%d&g=d&ignore=.csv"
 
 -- Provide an instance of FromRecord to decode the csv we get back from yahoo.
 -- This is part of the Data.Csv module
@@ -95,8 +125,29 @@ instance FromRecord YahooQuote where
                             v .! 5
         | otherwise     = fail "Unable to parse Yahoo response as YahooQuote"
 
+instance FromRecord TimePoint where
+    parseRecord v
+        | Data.Vector.length v == 7 = TimePoint <$>
+                            v .! 0 <*>
+                            v .! 1 <*>
+                            v .! 2 <*>
+                            v .! 3 <*>
+                            v .! 4 <*>
+                            v .! 5 <*>
+                            v .! 6
+        | otherwise     = fail "Unable to parse Yahoo response as YahooQuote"
+
 makeUrl :: [Symbol] -> String
 makeUrl symbols = baseQuoteUri ++ (intercalate "+" symbols)
+
+makeHistoUrl :: Symbol -> Day -> Day -> String
+makeHistoUrl symbol to from = printf baseHistoUri 
+                                symbol
+                                fromYear (fromMonth - 1) fromDay
+                                toYear (toMonth - 1) toDay
+                where
+                (toYear, toMonth, toDay) = toGregorian to
+                (fromYear, fromMonth, fromDay) = toGregorian from 
 
 {-| Make an http request to yahoo for stock symbols and stream the result back.
 The list of @Symbol@s are passed to the http request, therefore should be
@@ -117,6 +168,15 @@ makeLookupUrl :: Symbol -> String
 makeLookupUrl s = "http://d.yimg.com/autoc.finance.yahoo.com/autoc?query=" ++
                     s ++ "&callback=YAHOO.Finance.SymbolSuggest.ssCallback";
 
+{-| Retrieve historical time series from Yahoo
+ -}
+getHisto :: MonadIO m => Symbol -> Day -> Day -> Source m TimePoint
+getHisto symbol from to = do
+    r <- liftIO $ get (makeHistoUrl symbol to from)
+    case Data.Csv.decode HasHeader (r ^. responseBody) of
+        Left err -> liftIO $ putStrLn ("Failed to decode yahoo response: " ++ err)
+        Right vals -> mapM_ yield (toList vals)
+    
 -- Yahoo returns a string with a json string enclosed within a surrounding
 -- class method. Here we return the inner json string
 stripClassname :: String -> String
