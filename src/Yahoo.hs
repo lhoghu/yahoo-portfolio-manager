@@ -57,14 +57,16 @@ type Symbol = String
 
 {-|
 The type used to house the quote csv fields we get back from yahoo
+Use Left Field if the conversion fails (e.g. if yahoo has no data
+for that field, it might return a string, N/A, instead of a double
 -}
 data YahooQuote = YahooQuote {
     symbol  :: Symbol,
     name    :: String,
     currency:: String,
-    quote   :: Double,
-    change  :: Double,
-    volume  :: Int
+    quote   :: Either Field Double,
+    change  :: Either Field Double,
+    volume  :: Either Field Int
 } deriving (Show, Eq, Ord)
 
 {-|
@@ -91,6 +93,10 @@ data TimePoint = TimePoint {
     histoVolume         :: Double,
     histoAdjClose       :: Double
 } deriving (Show, Eq, Ord)
+
+eitherToMaybe :: Either a b -> Maybe b
+eitherToMaybe (Left f) = Nothing
+eitherToMaybe (Right f) = Just f
 
 -- The yahoo finance url template which we append with the symbols we'd like
 -- quotes for
@@ -135,7 +141,7 @@ instance FromRecord TimePoint where
                             v .! 4 <*>
                             v .! 5 <*>
                             v .! 6
-        | otherwise     = fail "Unable to parse Yahoo response as YahooQuote"
+        | otherwise     = fail "Unable to parse Yahoo response as TimePoint"
 
 makeUrl :: [Symbol] -> String
 makeUrl symbols = baseQuoteUri ++ (intercalate "+" symbols)

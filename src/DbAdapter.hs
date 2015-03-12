@@ -1,3 +1,7 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+
 {- |
 Implementation of persistent db storage for user defined portfolio information
 and quote information retrieved from yahoo
@@ -20,6 +24,7 @@ module DbAdapter (
 
 import Control.Monad (when)
 import Data.Conduit (($=), ($$), await, yield, Conduit (..))
+import Data.Convertible
 import Database.HDBC
 import Database.HDBC.Sqlite3
 import Data.Time (Day (..))
@@ -243,11 +248,11 @@ data Portfolio = Portfolio {
     prtfdiv         :: Maybe Double,
     prtfsymbol      :: String,
     prtfcost        :: Double,
-    prtfcurrent     :: Double,
-    prtfchange      :: Double,
-    prtfpctchange   :: Double,
-    prtfpnl         :: Double,
-    prtfpctpnl      :: Double
+    prtfcurrent     :: Maybe Double,
+    prtfchange      :: Maybe Double,
+    prtfpctchange   :: Maybe Double,
+    prtfpnl         :: Maybe Double,
+    prtfpctpnl      :: Maybe Double
 } deriving (Show, Ord, Eq)
 
 instance Converters Portfolio where
@@ -255,12 +260,12 @@ instance Converters Portfolio where
                    , printf "%.0f" (prtfunits p)
                    , printf "%.2f" (prtfprice p)
                    , printf "%.2f" (prtfcost p)
-                   , printf "%.2f" (prtfcurrent p)
-                   , printf "%.2f" (prtfchange p)
-                   , printf "%.2f" (100.0 * prtfpctchange p)
+                   , printf "%.2f" (handleNull (prtfcurrent p))
+                   , printf "%.2f" (handleNull (prtfchange p))
+                   , printf "%.2f" (100.0 * (handleNull (prtfpctchange p)))
                    , printf "%.2f" (handleNull (prtfdiv p))
-                   , printf "%.2f" (prtfpnl p)
-                   , printf "%.2f" (100.0 * prtfpctpnl p)
+                   , printf "%.2f" (handleNull (prtfpnl p))
+                   , printf "%.2f" (100.0 * (handleNull (prtfpctpnl p)))
                    ]
                    where
                    handleNull (Just d) = d
@@ -421,6 +426,13 @@ populateQuotesTable conn symbols = do
     sqlValues <- (getQuote symbols) $$ yahooQuoteToSqlConduit $= CL.consume
     insertYahooQuotes conn sqlValues
 
+{- Define a convertible instance to translate Either results from the 
+ - Yahoo query into Maybe results
+ -}
+instance (Convertible b SqlValue) => Convertible (Either a b) SqlValue where
+    safeConvert (Left _) = return SqlNull
+    safeConvert (Right b) = safeConvert (Just b)
+
 {- Define a conduit to transform the stream of yahoo quotes into
   a stream of SqlValue lists, which, when consumed by a sink is
   ready for insertion in the db
@@ -468,13 +480,13 @@ yahooHistoToSqlConduit symbol = do
     case quoteStream of
         Just q -> do
             yield $ [ toSql symbol
-                    , toSql (histoDte q)
-                    , toSql (histoOpen q)
-                    , toSql (histoHigh q)
-                    , toSql (histoLow q)
-                    , toSql (histoClose q)
-                    , toSql (histoVolume q)
-                    , toSql (histoAdjClose q)
+                    , toSql (Yahoo.histoDte q)
+                    , toSql (Yahoo.histoOpen q)
+                    , toSql (Yahoo.histoHigh q)
+                    , toSql (Yahoo.histoLow q)
+                    , toSql (Yahoo.histoClose q)
+                    , toSql (Yahoo.histoVolume q)
+                    , toSql (Yahoo.histoAdjClose q)
                     ]
             yahooHistoToSqlConduit symbol
         Nothing -> return ()
