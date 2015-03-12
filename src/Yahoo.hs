@@ -94,10 +94,6 @@ data TimePoint = TimePoint {
     histoAdjClose       :: Double
 } deriving (Show, Eq, Ord)
 
-eitherToMaybe :: Either a b -> Maybe b
-eitherToMaybe (Left f) = Nothing
-eitherToMaybe (Right f) = Just f
-
 -- The yahoo finance url template which we append with the symbols we'd like
 -- quotes for
 baseQuoteUri :: String
