@@ -97,7 +97,7 @@ data TimePoint = TimePoint {
 -- The yahoo finance url template which we append with the symbols we'd like
 -- quotes for
 baseQuoteUri :: String
-baseQuoteUri = "http://download.finance.yahoo.com/d/quotes.csv?f=snc4l1c6v&s="
+baseQuoteUri = "http://download.finance.yahoo.com/d/quotes.csv?f=snc4l1c1v&s="
 
 -- The url template for histo data in csv format:
 --      s = symbol
