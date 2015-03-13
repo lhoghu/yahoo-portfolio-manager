@@ -210,7 +210,7 @@ addDividend conn = do
   for output at the command line
  -}
 headers :: [String]
-headers = ["Units", "Price", "Cost", "Current", "Chg", "(%)", "Divs", "PnL", "(%)"]
+headers = ["Alloc", "Price", "Cost", "Current", "Chg", "(%)", "Divs", "PnL", "(%)"]
 
 prettyPrint :: [String] -> String
 prettyPrint = intercalate "\t" 

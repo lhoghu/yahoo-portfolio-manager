@@ -45,6 +45,9 @@ dbFile = do
 portfolioSqlFile :: IO FilePath
 portfolioSqlFile = getDataFileName "src/sql/portfolio.sql"
 
+dailyPnlViewSqlFile :: IO FilePath
+dailyPnlViewSqlFile = getDataFileName "src/sql/daily_pnl_view.sql"
+
 --------------------------------------------------------------------------------
 
 {- Strings for the portfolio data. This is populated with the (yahoo) symbols
@@ -224,7 +227,14 @@ sqlCreateEntries conn = do
         do 
             run conn sqlCreatePortfolioTable []
             run conn sqlCreateDividendsTable []
+            
             return ()
+
+    fn <- dailyPnlViewSqlFile 
+    createViewSql <- readFile fn
+    _ <- run conn "drop view if exists daily_pnl" []
+    _ <- run conn createViewSql []
+
     commit conn
 
 --------------------------------------------------------------------------------
@@ -243,7 +253,7 @@ class Converters a where
   including yahoo quotes and portfolio position info
  -}
 data Portfolio = Portfolio {
-    prtfunits       :: Double,
+    prtfalloc       :: Double,
     prtfprice       :: Double,
     prtfdiv         :: Maybe Double,
     prtfsymbol      :: String,
@@ -257,7 +267,7 @@ data Portfolio = Portfolio {
 
 instance Converters Portfolio where
     toStrings p =  [ prtfsymbol p
-                   , printf "%.0f" (prtfunits p)
+                   , printf "%.2f" (prtfalloc p)
                    , printf "%.2f" (prtfprice p)
                    , printf "%.2f" (prtfcost p)
                    , printf "%.2f" (handleNull (prtfcurrent p))
@@ -271,14 +281,14 @@ instance Converters Portfolio where
                    handleNull (Just d) = d
                    handleNull Nothing = 0.0
 
-    fromSqlValues [pos, pri, div, sym, str, cur, chg, pch, pnl, plc] =  
-        Portfolio (fromSql pos) (fromSql pri) (fromSql div) 
+    fromSqlValues [all, pri, div, sym, str, cur, chg, pch, pnl, plc] =  
+        Portfolio (fromSql all) (fromSql pri) (fromSql div) 
                   (fromSql sym) (fromSql str) 
                   (fromSql cur) (fromSql chg) (fromSql pch) 
                   (fromSql pnl) (fromSql plc)
 
-    toSqlValues (Portfolio pos pri div sym str cos chg pch pnl plc) =  
-        [toSql pos, toSql pri, toSql sym, toSql div, toSql str, toSql cos, 
+    toSqlValues (Portfolio all pri div sym str cos chg pch pnl plc) =  
+        [toSql all, toSql pri, toSql sym, toSql div, toSql str, toSql cos, 
          toSql chg, toSql pch, toSql pnl, toSql plc]
 
 {-| Haskell structure that contains the portfolio position information
@@ -574,25 +584,7 @@ fetchPortfolio conn =
     do
         fn <- portfolioSqlFile
         sqlQuery <- readFile fn
-        _ <- run conn sqlQuery []
-        res <- quickQuery' conn 
-                "select * from \
-                \(\
-                \        select * from daily_pnl\
-                \        union select\
-                \                0.0,\
-                \                0.0,\
-                \                sum(dividends),\
-                \                'TOTAL',\
-                \                sum(cost),\
-                \                sum(current_value),\
-                \                sum(change),\
-                \                sum(change) / sum(current_value),\
-                \                sum(total_change),\
-                \                sum(current_value - cost +dividends)/sum(cost)\
-                \        from daily_pnl\
-                \) as t\
-                \ order by case t.symbol when 'TOTAL' then 100 else 1 end" []
+        res <- quickQuery' conn sqlQuery []
         return $ map fromSqlValues res
     where 
     errorHandler e = do
