@@ -20,16 +20,13 @@ module Yahoo (
     Symbol,
 
     -- * Types retrievable from Yahoo
-    YahooQuote, LookupSymbol, TimePoint (..),
+    YahooQuote, LookupSymbol (..), TimePoint (..),
 
     -- ** @YahooQuote@ fields
     symbol, name, currency, quote, change, volume, 
 
     -- * Populating @YahooQuote@s
     getQuote, getHisto,
-
-    -- ** @LookupSymbol@ fields
-    resSymbol, resName, resExch, resType, resExchDisp, resTypeDisp,
 
     -- * @LookupSymbol@ operations
     lookupSymbol, validateSymbol
@@ -50,6 +47,7 @@ import Text.Printf
 import Text.Regex
 import qualified Data.Conduit.List as CL
 import qualified Data.ByteString.Lazy.Char8 as BS
+import qualified Data.ByteString.Lazy as BSL
 
 -- | Provide a Symbol type for clarity. 
 -- These should be the stock symbols used by Yahoo
@@ -151,6 +149,13 @@ makeHistoUrl symbol to from = printf baseHistoUri
                 (toYear, toMonth, toDay) = toGregorian to
                 (fromYear, fromMonth, fromDay) = toGregorian from 
 
+
+{- Remove non-utf8 chars from the bytestring. At the moment the £ is
+ - the only known problem
+ -}
+removeUnwantedChars :: BSL.ByteString -> BSL.ByteString
+removeUnwantedChars = BSL.concat . BS.split '\xa3'
+
 {-| Make an http request to yahoo for stock symbols and stream the result back.
 The list of @Symbol@s are passed to the http request, therefore should be
 recognised by yahoo.
@@ -161,7 +166,7 @@ process the resulting stream.
 getQuote :: MonadIO m => [Symbol] -> Source m YahooQuote
 getQuote symbols = do
     r <- liftIO $ get (makeUrl symbols)
-    case Data.Csv.decode NoHeader (r ^. responseBody) of
+    case Data.Csv.decode NoHeader (removeUnwantedChars $ r ^. responseBody) of
         Left err -> liftIO $ putStrLn ("Failed to decode yahoo response: " ++ err)
         Right vals -> mapM_ yield (toList vals)
 
