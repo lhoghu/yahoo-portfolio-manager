@@ -92,6 +92,20 @@ data TimePoint = TimePoint {
     histoAdjClose       :: Double
 } deriving (Show, Eq, Ord)
 
+type Url = String
+data UrlBuilder = Quote { syms :: [Symbol] } 
+                | Histo { sym :: Symbol, start :: Day, end :: Day}
+
+makeUrl' :: UrlBuilder -> Url
+makeUrl' (Quote syms) = baseQuoteUri ++ (intercalate "+" syms)
+makeUrl' (Histo sym start end) = printf baseHistoUri 
+                                    sym
+                                    fromYear (fromMonth - 1) fromDay
+                                    toYear (toMonth - 1) toDay
+                where
+                (toYear, toMonth, toDay) = toGregorian end
+                (fromYear, fromMonth, fromDay) = toGregorian start
+
 -- The yahoo finance url template which we append with the symbols we'd like
 -- quotes for
 baseQuoteUri :: String
@@ -137,19 +151,6 @@ instance FromRecord TimePoint where
                             v .! 6
         | otherwise     = fail "Unable to parse Yahoo response as TimePoint"
 
-makeUrl :: [Symbol] -> String
-makeUrl symbols = baseQuoteUri ++ (intercalate "+" symbols)
-
-makeHistoUrl :: Symbol -> Day -> Day -> String
-makeHistoUrl symbol to from = printf baseHistoUri 
-                                symbol
-                                fromYear (fromMonth - 1) fromDay
-                                toYear (toMonth - 1) toDay
-                where
-                (toYear, toMonth, toDay) = toGregorian to
-                (fromYear, fromMonth, fromDay) = toGregorian from 
-
-
 {- Remove non-utf8 chars from the bytestring. At the moment the £ is
  - the only known problem
  -}
@@ -163,27 +164,25 @@ recognised by yahoo.
 See 'Lifting Operations' in conduit documentation for orientation on how to 
 process the resulting stream.
 -}
-getQuote :: MonadIO m => [Symbol] -> Source m YahooQuote
-getQuote symbols = do
-    r <- liftIO $ get (makeUrl symbols)
+getUrl :: (MonadIO m, FromRecord a) => UrlBuilder -> Source m a
+getUrl u = do
+    r <- liftIO $ get (makeUrl' u)
     case Data.Csv.decode NoHeader (removeUnwantedChars $ r ^. responseBody) of
         Left err -> liftIO $ putStrLn ("Failed to decode yahoo response: " ++ err)
         Right vals -> mapM_ yield (toList vals)
 
+getQuote :: MonadIO m => [Symbol] -> Source m YahooQuote
+getQuote symbols = do getUrl $ Quote symbols
+
+{-| Retrieve historical time series from Yahoo
+ -}
+getHisto :: MonadIO m => Symbol -> Day -> Day -> Source m TimePoint
+getHisto symbol from to = do getUrl $ Histo symbol to from
 
 makeLookupUrl :: Symbol -> String
 makeLookupUrl s = "http://d.yimg.com/autoc.finance.yahoo.com/autoc?query=" ++
                     s ++ "&callback=YAHOO.Finance.SymbolSuggest.ssCallback";
 
-{-| Retrieve historical time series from Yahoo
- -}
-getHisto :: MonadIO m => Symbol -> Day -> Day -> Source m TimePoint
-getHisto symbol from to = do
-    r <- liftIO $ get (makeHistoUrl symbol to from)
-    case Data.Csv.decode HasHeader (r ^. responseBody) of
-        Left err -> liftIO $ putStrLn ("Failed to decode yahoo response: " ++ err)
-        Right vals -> mapM_ yield (toList vals)
-    
 -- Yahoo returns a string with a json string enclosed within a surrounding
 -- class method. Here we return the inner json string
 stripClassname :: String -> String
