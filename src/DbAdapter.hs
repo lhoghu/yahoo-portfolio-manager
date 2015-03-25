@@ -11,9 +11,6 @@ module DbAdapter (
 
     stringify, toStrings,
 
-    -- ** Types queryable in the db
-    Portfolio(..), Position(..), Dividend(..), Fx(..),
-
     -- ** Db updates
     insertPosition, insertDividend, insertFx, populateQuotesTable, 
     populateHistoQuotes,
@@ -27,11 +24,14 @@ import Data.Conduit (($=), ($$), await, yield, Conduit (..))
 import Data.Convertible
 import Database.HDBC
 import Database.HDBC.Sqlite3
-import Data.Time (Day (..))
+import Data.Time (Day (..), showGregorian)
+import DateUtils
 import Paths_yahoo_portfolio_manager
 import System.Directory (createDirectoryIfMissing)
 import Text.Printf
-import Yahoo
+import qualified TimeSeries as TS
+import Types
+import qualified Yahoo as Yahoo
 import qualified Data.Conduit.List as CL
 
 -- | The location of the db on disk
@@ -248,23 +248,6 @@ class Converters a where
     fromSqlValues :: [SqlValue] -> a
     toSqlValues :: a -> [SqlValue]
 
-
-{- | Haskell structure that represents the command line output table
-  including yahoo quotes and portfolio position info
- -}
-data Portfolio = Portfolio {
-    prtfalloc       :: Double,
-    prtfprice       :: Double,
-    prtfdiv         :: Maybe Double,
-    prtfsymbol      :: String,
-    prtfcost        :: Double,
-    prtfcurrent     :: Maybe Double,
-    prtfchange      :: Maybe Double,
-    prtfpctchange   :: Maybe Double,
-    prtfpnl         :: Maybe Double,
-    prtfpctpnl      :: Maybe Double
-} deriving (Show, Ord, Eq)
-
 instance Converters Portfolio where
     toStrings p =  [ prtfsymbol p
                    , printf "%.2f" (prtfalloc p)
@@ -291,21 +274,10 @@ instance Converters Portfolio where
         [toSql all, toSql pri, toSql sym, toSql div, toSql str, toSql cos, 
          toSql chg, toSql pch, toSql pnl, toSql plc]
 
-{-| Haskell structure that contains the portfolio position information
-  entered by the user
- -}
-data Position = Position {
-    symbol      :: String,
-    currency    :: String,
-    date        :: String,
-    position    :: Double,
-    strike      :: Double
-} deriving (Show, Ord, Eq)
-
 instance Converters Position where
-    toStrings p = [ DbAdapter.symbol p
-                  , DbAdapter.currency p 
-                  , DbAdapter.date p 
+    toStrings p = [ symbol p
+                  , currency p 
+                  , date p 
                   , show $ position p
                   , show $ strike p
                   ]
@@ -319,16 +291,6 @@ instance Converters Position where
     toSqlValues (Position sym ccy dte pos str) =
         [toSql sym, toSql ccy, toSql dte, toSql pos, toSql str]
 
-{-| Haskell structure that contains the fx to convert yahoo quotes into
- the symbol currency entered by the user
- -}
-data Fx = Fx {
-    fxToCcy :: String,
-    fxFromCcy :: String,
-    fx :: Double,
-    prtfFx :: Double
-} deriving (Show, Ord, Eq)
-
 instance Converters Fx where
     toStrings f = [fxToCcy f, fxFromCcy f, show $ fx f, show $ prtfFx f]
     fromSqlValues [to, from, f, pf] = Fx (fromSql to) 
@@ -336,15 +298,6 @@ instance Converters Fx where
                                          (fromSql f) 
                                          (fromSql pf)
     toSqlValues (Fx to from f pf) = [toSql to, toSql from, toSql f, toSql pf]
-
-{-| Haskell structure that contains the portfolio position information
-  entered by the user
- -}
-data Dividend = Dividend {
-    divsymbol   :: String,
-    dividend    :: Double,
-    divdate     :: String
-} deriving (Show, Ord, Eq)
 
 instance Converters Dividend where
     toStrings d = [ divsymbol d
@@ -358,6 +311,11 @@ instance Converters Dividend where
 
     toSqlValues (Dividend sym div dte) =
         [toSql sym, toSql div, toSql dte]
+
+instance Converters (TS.TimePoint Double) where
+    toStrings tp = [showGregorian (TS.date tp), show (TS.value tp)]
+    fromSqlValues [dte, val] = TS.TimePoint (toDate (fromSql dte)) (fromSql val)
+    toSqlValues tp = [toSql $ TS.date tp, toSql (TS.value tp)]
 
 {- |
 Convert a list of Converters instances into a list of strings.
@@ -433,7 +391,9 @@ has entered in their portfolio.
 -}
 populateQuotesTable :: IConnection conn => conn -> [Symbol] -> IO ()
 populateQuotesTable conn symbols = do
-    sqlValues <- (getQuote symbols) $$ yahooQuoteToSqlConduit $= CL.consume
+    sqlValues <- (Yahoo.getQuote symbols) 
+                $$ yahooQuoteToSqlConduit 
+                $= CL.consume
     insertYahooQuotes conn sqlValues
 
 {- Define a convertible instance to translate Either results from the 
@@ -447,16 +407,16 @@ instance (Convertible b SqlValue) => Convertible (Either a b) SqlValue where
   a stream of SqlValue lists, which, when consumed by a sink is
   ready for insertion in the db
  -}
-yahooQuoteToSqlConduit :: Conduit YahooQuote IO [SqlValue]
+yahooQuoteToSqlConduit :: Conduit Yahoo.YahooQuote IO [SqlValue]
 yahooQuoteToSqlConduit = do
     quoteStream <- await
     case quoteStream of
         Just q -> do
             yield $ [ toSql (Yahoo.symbol q) 
                     , toSql (Yahoo.currency q)
-                    , toSql (quote q)
-                    , toSql (volume q)
-                    , toSql (change q)
+                    , toSql (Yahoo.quote q)
+                    , toSql (Yahoo.volume q)
+                    , toSql (Yahoo.change q)
                     ]
             yahooQuoteToSqlConduit
         Nothing -> return ()
@@ -479,12 +439,23 @@ insertYahooQuotes conn quotes =
  -}
 populateHistoQuotes :: IConnection conn => conn -> Symbol -> Day -> Day -> IO ()
 populateHistoQuotes conn symbol from to = do
-    sqlValues <- (getHisto symbol from to) 
-                    $$ yahooHistoToSqlConduit symbol
-                    $= CL.consume
+    ts <- fetchHisto conn symbol
+    sqlValues <- (Yahoo.getHisto symbol from to) 
+                    $= filterConduit (TS.dates ts)
+                    $= yahooHistoToSqlConduit symbol
+                    $$ CL.consume
     insertYahooHistoQuotes conn sqlValues
 
-yahooHistoToSqlConduit :: Symbol -> Conduit TimePoint IO [SqlValue]
+-- Conduit to filter out any dates already stored in the db on the current
+-- symbol. This is so that existing data is preserved, under the assumption
+-- that we might have fixed it by hand so want to avoid automated overwrites
+filterConduit :: [Day] -> Conduit Yahoo.TimePoint IO Yahoo.TimePoint
+filterConduit dates = CL.filter pred 
+    where pred q = not (any (== toDate (Yahoo.histoDte q)) dates)
+
+-- Conduit to transform the yahoo result into a set of sql values ready
+-- for insertion in the db
+yahooHistoToSqlConduit :: Symbol -> Conduit Yahoo.TimePoint IO [SqlValue]
 yahooHistoToSqlConduit symbol = do
     quoteStream <- await
     case quoteStream of
@@ -589,3 +560,17 @@ fetchPortfolio conn =
     where 
     errorHandler e = do
         fail $ "Failed to fetch portfolio from db: " ++ show e
+
+{-| Fetch a history for the given symbol from the db -}
+fetchHisto :: IConnection conn => conn -> Symbol -> IO (TS.TimeSeries Double)
+fetchHisto conn sym = 
+    handleSql errorHandler $
+    do
+        res <- quickQuery' conn ("select " ++ histoDateCol ++ ", " ++ 
+                histoCloseCol ++ " from " ++ yahooHistoQuotes ++ " where "
+                ++ histoSymbolCol ++ " = '" ++ sym ++ "'") []
+        return $ TS.create $ map fromSqlValues res
+    where 
+    errorHandler e = do
+        fail $ "Failed to fetch history from db for symbol (" ++ sym ++ "): " 
+                ++ show e

@@ -17,13 +17,8 @@ for usage of Data.Csv package (cassava in cabal)
 -}
 
 module Yahoo (
-    Symbol,
-
     -- * Types retrievable from Yahoo
-    YahooQuote, LookupSymbol (..), TimePoint (..),
-
-    -- ** @YahooQuote@ fields
-    symbol, name, currency, quote, change, volume, 
+    YahooQuote (..), LookupSymbol (..), TimePoint (..),
 
     -- * Populating @YahooQuote@s
     getQuote, getHisto,
@@ -45,13 +40,11 @@ import Control.Monad.Trans (liftIO, MonadIO)
 import Network.Wreq (get, responseBody)
 import Text.Printf
 import Text.Regex
+import Types
 import qualified Data.Conduit.List as CL
 import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
 
--- | Provide a Symbol type for clarity. 
--- These should be the stock symbols used by Yahoo
-type Symbol = String
 
 {-|
 The type used to house the quote csv fields we get back from yahoo
@@ -164,20 +157,20 @@ recognised by yahoo.
 See 'Lifting Operations' in conduit documentation for orientation on how to 
 process the resulting stream.
 -}
-getUrl :: (MonadIO m, FromRecord a) => UrlBuilder -> Source m a
-getUrl u = do
+getUrl :: (MonadIO m, FromRecord a) => HasHeader -> UrlBuilder -> Source m a
+getUrl h u = do
     r <- liftIO $ get (makeUrl' u)
-    case Data.Csv.decode NoHeader (removeUnwantedChars $ r ^. responseBody) of
+    case Data.Csv.decode h (removeUnwantedChars $ r ^. responseBody) of
         Left err -> liftIO $ putStrLn ("Failed to decode yahoo response: " ++ err)
         Right vals -> mapM_ yield (toList vals)
 
 getQuote :: MonadIO m => [Symbol] -> Source m YahooQuote
-getQuote symbols = do getUrl $ Quote symbols
+getQuote symbols = do getUrl NoHeader $ Quote symbols
 
 {-| Retrieve historical time series from Yahoo
  -}
 getHisto :: MonadIO m => Symbol -> Day -> Day -> Source m TimePoint
-getHisto symbol from to = do getUrl $ Histo symbol to from
+getHisto symbol from to = do getUrl HasHeader $ Histo symbol to from
 
 makeLookupUrl :: Symbol -> String
 makeLookupUrl s = "http://d.yimg.com/autoc.finance.yahoo.com/autoc?query=" ++

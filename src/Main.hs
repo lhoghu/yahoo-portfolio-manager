@@ -35,6 +35,7 @@ import System.Environment(getArgs, getProgName)
 import Text.Regex
 import Text.Tabular
 import Text.Tabular.AsciiArt
+import Types
 import Yahoo (validateSymbol, lookupSymbol, LookupSymbol (..))
 
 -- Set up the flags the user can pass in at the command line
