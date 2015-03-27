@@ -16,7 +16,8 @@ module DbAdapter (
     populateHistoQuotes,
 
     -- ** Db retrieval
-    fetchSymbols, fetchPositions, fetchFx, fetchPortfolio, fetchDividends
+    fetchSymbols, fetchPositions, fetchFx, fetchPortfolio, fetchDividends,
+    fetchHisto
 ) where
 
 import Control.Monad (when)

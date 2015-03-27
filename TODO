@@ -1,0 +1,8 @@
+Functionality
+-------------
+
+    * View PV history of portfolio
+      Include breakdown by symbol; scope to select time frame
+      Requires: plotting, timeseries manipulation, fixing data quality
+
+    * Backtesting

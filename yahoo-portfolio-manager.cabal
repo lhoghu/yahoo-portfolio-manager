@@ -29,6 +29,6 @@ executable yahoo-portfolio-manager
                        vector >=0.10 && <0.11, conduit, lens < 4.5, wreq, 
                        cassava, HDBC-sqlite3, HDBC, aeson, regex-posix, 
                        regex-compat, bytestring, tabular, directory, time,
-                       convertible, containers
+                       convertible, containers, gnuplot
   -- hs-source-dirs:      
   default-language:    Haskell2010

@@ -63,6 +63,9 @@ filter :: (TimePoint a -> Bool) -> TimeSeries a -> TimeSeries a
 filter p ts = TimeSeries $ M.filterWithKey pred (get ts)
                 where pred k v = p $ TimePoint k v
 
+toList :: TimeSeries a -> [(Day, a)]
+toList = M.toList . get
+
 --------------------------------------------------------------------------------
 -- Test code...
 --
