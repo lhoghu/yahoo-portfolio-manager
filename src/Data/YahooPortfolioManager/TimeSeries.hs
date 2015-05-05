@@ -9,12 +9,12 @@
   Like Data.Map, many function names clash with those within Prelude
   so this module is best imported @qualified@
   -}
-module TimeSeries where
+module Data.YahooPortfolioManager.TimeSeries where
 
 import Control.Applicative
 import qualified Data.Map.Strict as M
 import Data.Time
-import DateUtils
+import Data.YahooPortfolioManager.DateUtils
 
 data TimePoint a = TimePoint {
     date    :: Day,
@@ -30,7 +30,7 @@ newtype TimeSeries a = TimeSeries {
 --     show = 
 
 instance Functor TimeSeries where
-    fmap = TimeSeries.map
+    fmap = Data.YahooPortfolioManager.TimeSeries.map
     
 new :: TimeSeries a
 new = TimeSeries M.empty

@@ -2,7 +2,7 @@
 Date/time utilities
 -}
 
-module DateUtils where
+module Data.YahooPortfolioManager.DateUtils where
 
 import Data.Time
 import Data.Time.Calendar.WeekDate

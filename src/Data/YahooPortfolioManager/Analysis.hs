@@ -1,4 +1,4 @@
-module Analysis where
+module Data.YahooPortfolioManager.Analysis where
 
 import Data.List (sort)
 import Data.Time (Day, fromGregorian)

@@ -16,9 +16,9 @@ method (wreq in cabal)
 for usage of Data.Csv package (cassava in cabal)
 -}
 
-module Yahoo (
+module Data.YahooPortfolioManager.Yahoo (
     -- * Types retrievable from Yahoo
-    YahooQuote (..), LookupSymbol (..), TimePoint (..),
+    YahooQuote (..), LookupSymbol (..), YahooTimePoint (..),
 
     -- * Populating @YahooQuote@s
     getQuote, getHisto,
@@ -40,7 +40,7 @@ import Control.Monad.Trans (liftIO, MonadIO)
 import Network.Wreq (get, responseBody)
 import Text.Printf
 import Text.Regex
-import Types
+import Data.YahooPortfolioManager.Types
 import qualified Data.Conduit.List as CL
 import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.ByteString.Lazy as BSL
@@ -75,7 +75,7 @@ data LookupSymbol = LookupSymbol {
 {-|
 Type used to store time point for historical data
 -}
-data TimePoint = TimePoint {
+data YahooTimePoint = YahooTimePoint {
     histoDte            :: String,
     histoOpen           :: Double,
     histoHigh           :: Double,
@@ -132,9 +132,9 @@ instance FromRecord YahooQuote where
                             v .! 5
         | otherwise     = fail "Unable to parse Yahoo response as YahooQuote"
 
-instance FromRecord TimePoint where
+instance FromRecord YahooTimePoint where
     parseRecord v
-        | Data.Vector.length v == 7 = TimePoint <$>
+        | Data.Vector.length v == 7 = YahooTimePoint <$>
                             v .! 0 <*>
                             v .! 1 <*>
                             v .! 2 <*>
@@ -142,7 +142,7 @@ instance FromRecord TimePoint where
                             v .! 4 <*>
                             v .! 5 <*>
                             v .! 6
-        | otherwise     = fail "Unable to parse Yahoo response as TimePoint"
+        | otherwise     = fail "Unable to parse Yahoo response as YahooTimePoint"
 
 {- Remove non-utf8 chars from the bytestring. At the moment the £ is
  - the only known problem
@@ -169,7 +169,7 @@ getQuote symbols = do getUrl NoHeader $ Quote symbols
 
 {-| Retrieve historical time series from Yahoo
  -}
-getHisto :: MonadIO m => Symbol -> Day -> Day -> Source m TimePoint
+getHisto :: MonadIO m => Symbol -> Day -> Day -> Source m YahooTimePoint
 getHisto symbol from to = do getUrl HasHeader $ Histo symbol to from
 
 makeLookupUrl :: Symbol -> String

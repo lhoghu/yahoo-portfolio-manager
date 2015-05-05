@@ -20,23 +20,25 @@ the symbol, dividend per unit and divident payment date
 * -l, --lookup. Look for matches in Yahoo of a symbol string or substring. Yahoo returns up to 10 possible matches
 -}
 
-module Main (main) where
+module Data.YahooPortfolioManager.Cli.Main (main) where
 
 import Data.Conduit (($$))
 import qualified Data.Conduit.List as CL
 import Data.List (intercalate)
-import Data.Version
+import qualified Data.Version as DV
 import Database.HDBC
-import DateUtils (toDate)
-import DbAdapter
-import Paths_yahoo_portfolio_manager
+import Data.YahooPortfolioManager.DateUtils (toDate)
+import Data.YahooPortfolioManager.DbAdapter
+import qualified Paths_yahoo_portfolio_manager as P
 import System.Console.GetOpt
 import System.Environment(getArgs, getProgName)
 import Text.Regex
 import Text.Tabular
 import Text.Tabular.AsciiArt
-import Types
-import Yahoo (validateSymbol, lookupSymbol, LookupSymbol (..))
+import Data.YahooPortfolioManager.Types
+import Data.YahooPortfolioManager.Yahoo ( validateSymbol
+                                        , lookupSymbol
+                                        , LookupSymbol (..))
 
 -- Set up the flags the user can pass in at the command line
 data Flag = Version | ShowPortfolio | Update | AddSymbol | 
@@ -45,7 +47,7 @@ data Flag = Version | ShowPortfolio | Update | AddSymbol |
 
 options :: [OptDescr Flag]
 options = 
-    [ Option ['v'] ["version"] (NoArg Main.Version)    "Show version number"
+    [ Option ['v'] ["version"] (NoArg Version)    "Show version number"
     , Option ['s'] ["show"]    (NoArg ShowPortfolio)   "Show current portfolio"
     , Option ['u'] ["update"]  (NoArg Update)          "Show the market position"
     , Option ['a'] ["add"]     (NoArg AddSymbol)       "Add a symbol to the portfolio"
@@ -64,14 +66,14 @@ main = handleSqlError $
         progName <- getProgName
         let (flags, _, msgs) = getOpt RequireOrder options args
         case flags of
-            [Main.Version]  -> Main.version
+            [Version]  -> version
             [ShowPortfolio] -> showPortfolio conn
             [AddSymbol]     -> addSymbol conn
             [AddDividend]   -> addDividend conn
             [ShowDividends] -> showDividends conn
             [Update]        -> update conn
             [LoadHisto]     -> loadHistoQuotes conn
-            [Lookup]        -> Main.lookup
+            [Lookup]        -> Data.YahooPortfolioManager.Cli.Main.lookup
             _               -> ioError (userError (concat msgs ++ helpMessage))
                 where
                 helpMessage = usageInfo ("Usage: " ++ progName ++ " MODE") 
@@ -82,7 +84,7 @@ main = handleSqlError $
 -- Version impl
 --------------------------------------------------------------------------------
 version :: IO ()
-version = putStrLn $ showVersion Paths_yahoo_portfolio_manager.version
+version = putStrLn $ DV.showVersion P.version
 
 --------------------------------------------------------------------------------
 -- ShowPortfolio impl

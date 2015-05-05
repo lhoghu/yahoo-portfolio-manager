@@ -6,7 +6,7 @@
 Implementation of persistent db storage for user defined portfolio information
 and quote information retrieved from yahoo
 -}
-module DbAdapter (
+module Data.YahooPortfolioManager.DbAdapter (
     dbFile, connect,
 
     stringify, toStrings,
@@ -26,13 +26,13 @@ import Data.Convertible
 import Database.HDBC
 import Database.HDBC.Sqlite3
 import Data.Time (Day (..), showGregorian)
-import DateUtils
+import Data.YahooPortfolioManager.DateUtils
 import Paths_yahoo_portfolio_manager
 import System.Directory (createDirectoryIfMissing)
 import Text.Printf
-import qualified TimeSeries as TS
-import Types
-import qualified Yahoo as Yahoo
+import qualified Data.YahooPortfolioManager.TimeSeries as TS
+import Data.YahooPortfolioManager.Types
+import qualified Data.YahooPortfolioManager.Yahoo as Yahoo
 import qualified Data.Conduit.List as CL
 
 -- | The location of the db on disk
@@ -44,10 +44,10 @@ dbFile = do
 
 -- The location of sql queries on disk
 portfolioSqlFile :: IO FilePath
-portfolioSqlFile = getDataFileName "src/sql/portfolio.sql"
+portfolioSqlFile = getDataFileName "src/Data/YahooPortfolioManager/sql/portfolio.sql"
 
 dailyPnlViewSqlFile :: IO FilePath
-dailyPnlViewSqlFile = getDataFileName "src/sql/daily_pnl_view.sql"
+dailyPnlViewSqlFile = getDataFileName "src/Data/YahooPortfolioManager/sql/daily_pnl_view.sql"
 
 --------------------------------------------------------------------------------
 
@@ -276,11 +276,11 @@ instance Converters Portfolio where
          toSql chg, toSql pch, toSql pnl, toSql plc]
 
 instance Converters Position where
-    toStrings p = [ symbol p
-                  , currency p 
-                  , date p 
-                  , show $ position p
-                  , show $ strike p
+    toStrings p = [ possymbol p
+                  , poscurrency p 
+                  , posdate p 
+                  , show $ posposition p
+                  , show $ posstrike p
                   ]
 
     fromSqlValues [sym, ccy, dte, pos, str] = Position (fromSql sym)
@@ -450,13 +450,13 @@ populateHistoQuotes conn symbol from to = do
 -- Conduit to filter out any dates already stored in the db on the current
 -- symbol. This is so that existing data is preserved, under the assumption
 -- that we might have fixed it by hand so want to avoid automated overwrites
-filterConduit :: [Day] -> Conduit Yahoo.TimePoint IO Yahoo.TimePoint
+filterConduit :: [Day] -> Conduit Yahoo.YahooTimePoint IO Yahoo.YahooTimePoint
 filterConduit dates = CL.filter pred 
     where pred q = not (any (== toDate (Yahoo.histoDte q)) dates)
 
 -- Conduit to transform the yahoo result into a set of sql values ready
 -- for insertion in the db
-yahooHistoToSqlConduit :: Symbol -> Conduit Yahoo.TimePoint IO [SqlValue]
+yahooHistoToSqlConduit :: Symbol -> Conduit Yahoo.YahooTimePoint IO [SqlValue]
 yahooHistoToSqlConduit symbol = do
     quoteStream <- await
     case quoteStream of

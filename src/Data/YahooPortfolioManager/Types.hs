@@ -1,4 +1,4 @@
-module Types where
+module Data.YahooPortfolioManager.Types where
 
 -- | Provide a Symbol type for clarity. 
 -- These should be the stock symbols used by Yahoo
@@ -24,11 +24,11 @@ data Portfolio = Portfolio {
   entered by the user
  -}
 data Position = Position {
-    symbol      :: String,
-    currency    :: String,
-    date        :: String,
-    position    :: Double,
-    strike      :: Double
+    possymbol      :: String,
+    poscurrency    :: String,
+    posdate        :: String,
+    posposition    :: Double,
+    posstrike      :: Double
 } deriving (Show, Ord, Eq)
 
 {-| Haskell structure that contains the fx to convert yahoo quotes into
