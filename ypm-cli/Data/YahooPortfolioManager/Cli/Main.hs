@@ -239,19 +239,6 @@ update conn = do
     -- let prettyPrtf = stringify prettyPrint prtf
     -- mapM_ putStrLn prettyPrtf
 
--- TODO implement portfolio fx
-updateFx :: IConnection conn => conn -> IO ()
-updateFx conn = do
-    fxs <- fetchFx conn
-    insertFx conn (map setFx fxs)
-
--- Placeholder for fx functionality, pending retrieval from yahoo
-setFx :: Fx -> Fx
-setFx (Fx "GBp" "GBp" _ _) = Fx "GBp" "GBp" 1.0 0.01 
-setFx (Fx "GBP" "GBp" _ _) = Fx "GBP" "GBp" 0.01 1.0 
-setFx (Fx "GBp" "GBP" _ _) = Fx "GBp" "GBP" 100.0 0.01 
-setFx (Fx to from _ _) = if to == from then Fx to from 1.0 1.0 else Fx to from 1.0 1.0
-
 --------------------------------------------------------------------------------
 -- Lookup impl
 --------------------------------------------------------------------------------

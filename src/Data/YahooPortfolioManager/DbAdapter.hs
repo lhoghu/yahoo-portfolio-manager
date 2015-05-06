@@ -7,13 +7,13 @@ Implementation of persistent db storage for user defined portfolio information
 and quote information retrieved from yahoo
 -}
 module Data.YahooPortfolioManager.DbAdapter (
-    dbFile, connect, disconnect,
+    dbFile, connect, disconnect, withConnection, Connection,
 
     stringify, toStrings,
 
     -- ** Db updates
     insertPosition, insertDividend, insertFx, populateQuotesTable, 
-    populateHistoQuotes,
+    populateHistoQuotes, updateFx,
 
     -- ** Db retrieval
     fetchSymbols, fetchPositions, fetchFx, fetchPortfolio, fetchDividends,
@@ -215,6 +215,16 @@ connect fp =
     where errorHandler e = 
             do fail $ "Error connecting to database (" ++ show fp ++ "): " 
                         ++ show e
+
+-- | Utility to execute a function with a db connection, and disconnect
+-- from the db when finished
+withConnection :: (Connection -> IO a) -> IO a
+withConnection f = do
+    db <- dbFile
+    conn <- connect db
+    result <- f conn 
+    disconnect conn
+    return result
 
 --------------------------------------------------------------------------------
 
@@ -576,3 +586,16 @@ fetchHisto conn sym =
     errorHandler e = do
         fail $ "Failed to fetch history from db for symbol (" ++ sym ++ "): " 
                 ++ show e
+
+-- TODO implement portfolio fx
+updateFx :: IConnection conn => conn -> IO ()
+updateFx conn = do
+    fxs <- fetchFx conn
+    insertFx conn (map setFx fxs)
+
+-- Placeholder for fx functionality, pending retrieval from yahoo
+setFx :: Fx -> Fx
+setFx (Fx "GBp" "GBp" _ _) = Fx "GBp" "GBp" 1.0 0.01 
+setFx (Fx "GBP" "GBp" _ _) = Fx "GBP" "GBp" 0.01 1.0 
+setFx (Fx "GBp" "GBP" _ _) = Fx "GBp" "GBP" 100.0 0.01 
+setFx (Fx to from _ _) = if to == from then Fx to from 1.0 1.0 else Fx to from 1.0 1.0
