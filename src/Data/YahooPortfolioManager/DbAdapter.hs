@@ -7,7 +7,7 @@ Implementation of persistent db storage for user defined portfolio information
 and quote information retrieved from yahoo
 -}
 module Data.YahooPortfolioManager.DbAdapter (
-    dbFile, connect,
+    dbFile, connect, disconnect,
 
     stringify, toStrings,
 
@@ -37,10 +37,11 @@ import qualified Data.Conduit.List as CL
 
 -- | The location of the db on disk
 dbFile :: IO FilePath
-dbFile = do
-    dataDir <- getDataDir
-    _ <- createDirectoryIfMissing True dataDir
-    getDataFileName "portfolio.db"
+dbFile = return "/media/tom/hd/cloud/Dropbox/numbers/portfolio.db"
+    -- do
+    -- dataDir <- getDataDir
+    -- _ <- createDirectoryIfMissing True dataDir
+    -- getDataFileName "portfolio.db"
 
 -- The location of sql queries on disk
 portfolioSqlFile :: IO FilePath
