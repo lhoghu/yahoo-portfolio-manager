@@ -50,6 +50,10 @@ merge f t1 t2 = TimeSeries $ M.intersectionWith f (get t1) (get t2)
 map :: (a -> b) -> TimeSeries a -> TimeSeries b
 map f t = TimeSeries $ M.map f (get t)
 
+mapAccum :: (a -> b -> (a, c)) -> a -> TimeSeries b -> (a, TimeSeries c)
+mapAccum f i t = (fst res, TimeSeries $ snd res)
+    where res = M.mapAccum f i (get t)
+
 foldl :: (a -> b -> a) -> a -> TimeSeries b -> a
 foldl f i = M.foldl f i . get
 
@@ -62,6 +66,10 @@ fetch d t = liftA (TimePoint d) $ M.lookup d (get t)
 filter :: (TimePoint a -> Bool) -> TimeSeries a -> TimeSeries a
 filter p ts = TimeSeries $ M.filterWithKey pred (get ts)
                 where pred k v = p $ TimePoint k v
+
+-- Utility to supply filter function on date range, given start/end dates
+dateFilter :: Day -> Day -> TimePoint a -> Bool
+dateFilter from to tp = (date tp) >= from && (date tp) <= to
 
 toList :: TimeSeries a -> [(Day, a)]
 toList = M.toList . get

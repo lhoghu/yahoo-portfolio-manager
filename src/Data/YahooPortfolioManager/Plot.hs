@@ -1,10 +1,10 @@
-module Plot where
+module Data.YahooPortfolioManager.Plot where
 
 import Data.Time
-import DateUtils
-import DbAdapter
+import Data.YahooPortfolioManager.DateUtils
+import Data.YahooPortfolioManager.DbAdapter
 --import System.Exit
-import qualified TimeSeries as TS
+import qualified Data.YahooPortfolioManager.TimeSeries as TS
 import qualified Graphics.Gnuplot.Advanced as GP
 import qualified Graphics.Gnuplot.Simple as GS
 import qualified Graphics.Gnuplot.Plot.TwoDimensional as Plot2D
@@ -47,6 +47,12 @@ plotSymbol s = do
     GS.plotPath [GS.Title s, GS.Key Nothing, GS.XTicks (Just ["rotate"]), GS.XTime, GS.XFormat "%Y-%m-%d"] 
         $ prepXTime 
         $ map (\(d, v) -> (UTCTime d 0, v)) (TS.toList ts) 
+
+plot :: TS.TimeSeries Double -> IO ()
+plot ts =
+    GS.plotPath [GS.Key Nothing, GS.XTicks (Just ["rotate"]), GS.XTime, GS.XFormat "%Y-%m-%d"] 
+        $ prepXTime 
+        $ map (\(d, v) -> (UTCTime d 0, v)) (TS.toList ts)
 
 tsValues :: TS.TimeSeries a -> [a]
 tsValues = map snd . TS.toList
