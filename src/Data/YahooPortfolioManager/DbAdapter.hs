@@ -498,6 +498,40 @@ insertYahooHistoQuotes conn quotes =
     errorHandler e = do
         fail $ "Failed to insert historical Yahoo quotes in the db: " ++ show e
 
+updateHistoQuote :: IConnection conn => conn -> Symbol -> IO ()
+updateHistoQuote conn s = 
+    handleSql errorHandler $ do
+        run conn sqlCreateYahooHistoTable []
+
+        endDate <- getDate
+        fromDate <- quickQuery' conn ("select min(" ++ dateColumn ++
+                                      ") from " ++ yahooHistoQuotes ++
+                                      " where " ++ symbolColumn ++ "='" ++ s
+                                      ++ "'") []
+        let startDate : _ =  map (\(s:_) -> toDate $ fromSql s) fromDate  
+        populateHistoQuotes conn s startDate endDate
+    where
+    errorHandler e = do
+        fail $ "Failed to insert historical quotes in the db: " ++ show e
+
+updateAllHistoQuotes :: IConnection conn => conn -> IO ()
+updateAllHistoQuotes conn = 
+    handleSql errorHandler $ do
+        run conn sqlCreateYahooHistoTable []
+
+        symbolQuery <- quickQuery' conn ("select distinct " ++ symbolColumn ++
+                                         " from " ++ yahooHistoQuotes) []
+       
+        let symbols = map (\(s:_) -> fromSql s) symbolQuery :: [Symbol]
+        insert symbols
+
+        where 
+        insert (s : ss) = updateHistoQuote conn s >> insert ss
+        insert [] = return ()
+
+        errorHandler e = do
+            fail $ "Failed to insert historical quotes in the db: " ++ show e
+
 --------------------------------------------------------------------------------
 
 {-| Retrieve symbols from the db
