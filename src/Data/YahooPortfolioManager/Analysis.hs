@@ -72,7 +72,9 @@ computeUnits c p = fromIntegral . floor $ c / p
 data Holdings = Holdings {
     cash    :: Double,
     units   :: Double,
-    value   :: Double
+    value   :: Double,
+    price   :: Double,  -- the price paid for the currently held units
+    age     :: Integer  -- the number of time points this position has been held
 } deriving Show
 
 -- | The total value of all assets (cash, shares)
@@ -107,6 +109,8 @@ rebalance cash units price newUnits =
     Holdings (cash - (newUnits - units) * price)
              newUnits
              (newUnits * price)
+             price
+             0
 
 -- | Buy and hold strategy
 data BuyAndHold = BuyAndHold deriving Show
@@ -114,7 +118,7 @@ data BuyAndHold = BuyAndHold deriving Show
 instance Strategy BuyAndHold where
     -- If we hold a position, do nothing, otherwise buy
     evaluate _ h p = if (units h) > 0 
-                     then h 
+                     then h { age = (age h) + 1 }
                      else rebalance (cash h) 
                                     (units h) 
                                     p 
@@ -137,7 +141,29 @@ instance Strategy ConserveValue where
                                     (units h) 
                                     p 
                                     (computeUnits (targetPV s) p)
-                     else h
+                     else h { age = (age h) + 1 }
+
+data ConserveReturn = ConserveReturn {
+    targetReturn    :: Double,
+    targetInterval  :: Integer
+} deriving Show
+
+instance Strategy ConserveReturn where 
+    -- If the value of our holdings has moved outside the bounds
+    -- restore the position to match the target pv, otherwise do nothing
+    evaluate s h p
+        | (units h) == 0                = rebalance (cash h) 
+                                                    (units h) 
+                                                    p                            
+                                                    (computeUnits (cash h) p)
+        | (age h) < (targetInterval s)  = h { age = (age h) + 1 }
+        | otherwise                     = rebalance (cash h) 
+                                                    (units h) 
+                                                    p 
+                                                    (computeUnits 
+                                                        (pv h targetPrice) 
+                                                        p)
+            where targetPrice = (price h) * (targetReturn s)
 
 -- | Utility to summarise the results of a backtest
 data Summary = Summary {
@@ -181,6 +207,6 @@ simpleStrategy symbol start end = do
     conn <- DB.connect db
     prices <- DB.fetchHisto conn symbol
     let s = ConserveValue 9000 11000 10000 
-        h = Holdings 10000 0 0 in
+        h = Holdings 10000 0 0 0 0 in
         return $ backtest s h . TS.filter (TS.dateFilter start end) 
                $ prices
