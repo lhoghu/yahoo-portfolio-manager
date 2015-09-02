@@ -4,5 +4,9 @@ Functionality
     * View PV history of portfolio
       Include breakdown by symbol; scope to select time frame
       Requires: plotting, timeseries manipulation, fixing data quality
+        Blocking point is quality of ISXF.L time series
+        The other requirements have been satisfied
 
     * Backtesting
+
+    * Annualised pnl

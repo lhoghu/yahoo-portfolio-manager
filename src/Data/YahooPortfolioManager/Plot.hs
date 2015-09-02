@@ -37,9 +37,17 @@ test2 = do
     let start = addGregorianYearsRollOver (-5) end in do
         sequence_ $ GP.plotDefault (mydata (dateFilter start end) ts) : []
 
+-- Given a list of symbols, plot their history in the db
+test3 :: [String] -> IO [()]
+test3 ss = do
+    db <- dbFile
+    conn <- connectSqlite3 db 
+    sequence $ map (\s -> (fetchHisto conn s) >>= flip plotTitle s) ss
+
 plotSymbol :: String -> IO ()
 plotSymbol s = do
-    conn <- connectSqlite3 "portfolio.db"
+    db <- dbFile
+    conn <- connect db
     ts <- fetchHisto conn s
     -- can also try plotDots with sim effect
     -- can specify angle and offset in rotate: rotate by -60 offset -0.5, -1.5
@@ -47,6 +55,21 @@ plotSymbol s = do
     GS.plotPath [GS.Title s, GS.Key Nothing, GS.XTicks (Just ["rotate"]), GS.XTime, GS.XFormat "%Y-%m-%d"] 
         $ prepXTime 
         $ map (\(d, v) -> (UTCTime d 0, v)) (TS.toList ts) 
+    disconnect conn
+
+plotAllSymbols :: IO ()
+plotAllSymbols = do
+    db <- dbFile 
+    conn <- connect db
+    syms <- fetchSymbols conn
+    disconnect conn
+    mapM_ plotSymbol syms
+
+plotTitle :: TS.TimeSeries Double -> String -> IO ()
+plotTitle ts s =
+    GS.plotPath [GS.Title s, GS.Key Nothing, GS.XTicks (Just ["rotate"]), GS.XTime, GS.XFormat "%Y-%m-%d"] 
+        $ prepXTime 
+        $ map (\(d, v) -> (UTCTime d 0, v)) (TS.toList ts)
 
 plot :: TS.TimeSeries Double -> IO ()
 plot ts =
