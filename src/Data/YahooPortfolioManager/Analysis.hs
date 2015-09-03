@@ -1,6 +1,7 @@
 module Data.YahooPortfolioManager.Analysis where
 
 import Data.List (sort)
+import qualified Data.Set as DS
 import Data.Time (Day, fromGregorian)
 import Data.YahooPortfolioManager.DateUtils
 import qualified Data.YahooPortfolioManager.DbAdapter as DB
@@ -13,9 +14,9 @@ import qualified Data.YahooPortfolioManager.Plot as P
 -- time series. The list of positions is filtered to contain only positions
 -- relevant for the input symbol
 positionTimeSeries :: [Day] -> Symbol -> [Position] -> TS.TimeSeries Double
-positionTimeSeries ds s = interpolate ds 0.0 
-                          . TS.create . positionsToTimePoints 
-                          . filterPositions s
+positionTimeSeries ds s p = interpolate dates 0.0 pos_ts 
+    where pos_ts = TS.create . positionsToTimePoints $ filterPositions s p
+          dates = DS.toList $ DS.union (DS.fromList ds) (DS.fromList (TS.dates pos_ts))
 
 -- | Perform step-wise interpolation between time points
 -- The input value a is used to fill in values in the [Day] list
@@ -210,3 +211,72 @@ simpleStrategy symbol start end = do
         h = Holdings 10000 0 0 0 0 in
         return $ backtest s h . TS.filter (TS.dateFilter start end) 
                $ prices
+
+getStockHisto :: Symbol -> IO (TS.TimeSeries Stock)
+getStockHisto symbol = do
+    db <- DB.dbFile    
+    conn <- DB.connect db
+    priceHisto <- DB.fetchHisto conn symbol
+    positions <- DB.fetchPositions conn 
+    DB.disconnect conn
+
+    let positionHisto = positionTimeSeries (TS.dates priceHisto) symbol positions in
+       return $ TS.merge Stock positionHisto priceHisto
+
+loadPortfolioHisto :: Day -> Day -> IO [(Symbol, TS.TimeSeries Stock)]
+loadPortfolioHisto startDate endDate = 
+    DB.withConnection DB.fetchSymbols >>=
+    mapM (\s -> do
+        h <- getStockHisto s
+        -- Hard code a date filter for now - this is the first date in position
+        -- This is to avoid a the time up to this date having zero pv in plots
+        let 
+            flt = TS.filter $ TS.dateFilter startDate endDate
+        return $ (s, interpolate (filter isWeekDay [startDate .. endDate]) (Stock 0.0 0.0) $ flt h))
+
+stockValue :: Stock -> Double
+stockValue s = stockPosition s * stockPrice s
+
+valuePortfolioHisto :: [(Symbol, TS.TimeSeries Stock)] 
+                    -> [(Symbol, TS.TimeSeries Double)]
+valuePortfolioHisto = map (\(s, ts) -> (s, TS.map stockValue ts))
+
+{- 
+ - e.g. in repl
+
+positions <- DB.withConnection DB.fetchPositions
+let startDate = toDate "2014-07-07"
+let endDate = toDate "2015-09-01"
+prtf_hist <- loadPortfolioHisto
+let pv = valuePortfolioHisto prtf_hist
+let cash = cashAccount startDate endDate positions
+let pvWithCash = ("Cash", cash) : pv 
+let s = computePortfolioTotal pv
+P.plot . snd $ s
+let s' = computePortfolioTotal pvWithCash
+P.plot . snd $ s'
+-}
+
+computePortfolioTotal :: [(Symbol, TS.TimeSeries Double)] 
+                      -> (Symbol, TS.TimeSeries Double)
+computePortfolioTotal = foldl1 (\ts ts' -> (,) "Total" 
+                                               (TS.merge (+) (snd ts) 
+                                                             (snd ts'))) 
+
+computeCosts :: [Position] -> TS.TimeSeries Double
+computeCosts = foldr (TS.insertWith (+)) TS.new . 
+               map (\p -> TS.TimePoint (toDate $ posdate p) 
+                                       (posposition p * posstrike p))
+
+cashTimeSeries :: TS.TimeSeries Double -> TS.TimeSeries Double
+cashTimeSeries costs = snd $ TS.mapAccum accumulator total ic
+    where 
+        accumulator a v = (a-v, a-v)
+        total = (TS.foldl (+) 0.0 costs) 
+        initialDate = previousBusDay . fst . head $ TS.toList costs
+        ic = TS.insert (TS.TimePoint initialDate 0.0) costs
+
+cashAccount :: Day -> Day -> [Position] -> TS.TimeSeries Double
+cashAccount startDate endDate ps = 
+    interpolate (filter isWeekDay [startDate .. endDate]) 0.0 $ 
+        cashTimeSeries . computeCosts $ ps

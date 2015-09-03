@@ -40,6 +40,12 @@ getWeekDays offset period d = filter isWeekDay [min d d0 .. max d d0]
                 Month   -> addGregorianMonthsClip offset d
                 Year    -> addGregorianYearsClip  offset d
 
+previousBusDay :: Day -> Day
+previousBusDay d
+    | isWeekDay prev = prev
+    | otherwise      = previousBusDay prev
+    where prev = addDays (-1) d
+                    
 isWeekDay :: Day -> Bool
 isWeekDay day = d /= 6 && d /= 7
     where (_, _, d) = toWeekDate day

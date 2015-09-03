@@ -50,3 +50,7 @@ data Dividend = Dividend {
     divdate     :: String
 } deriving (Show, Ord, Eq)
 
+data Stock = Stock {
+    stockPosition   :: Double,
+    stockPrice      :: Double
+} deriving (Show, Ord, Eq)

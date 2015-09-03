@@ -41,6 +41,9 @@ create = foldr insert new
 insert :: TimePoint a -> TimeSeries a -> TimeSeries a
 insert tp ts = TimeSeries $ M.insert (date tp) (value tp) (get ts)
 
+insertWith :: (a -> a -> a) -> TimePoint a -> TimeSeries a -> TimeSeries a
+insertWith f tp ts = TimeSeries $ M.insertWith f (date tp) (value tp) (get ts)
+
 length :: TimeSeries a -> Int
 length = M.size . get
 
